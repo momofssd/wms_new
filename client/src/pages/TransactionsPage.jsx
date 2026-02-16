@@ -10,6 +10,7 @@ const TransactionsPage = () => {
 
   // Filter states
   const [skuFilter, setSkuFilter] = useState([]);
+  const [skuSearch, setSkuSearch] = useState("");
   const [nameFilter, setNameFilter] = useState("");
   const [shipmentFilter, setShipmentFilter] = useState("");
   const [locFilter, setLocFilter] = useState([]);
@@ -123,12 +124,23 @@ const TransactionsPage = () => {
     }
 
     if (showFBA) {
-      filtered = filtered.filter(
-        (t) =>
-          t.location === "AMAZON" ||
-          t.location_from === "AMAZON" ||
-          t.location_to === "AMAZON",
-      );
+      const amazon = "AMAZON";
+      filtered = filtered.filter((t) => {
+        const loc = String(t.location || "").toUpperCase();
+        const locFrom = String(t.location_from || "").toUpperCase();
+        const locTo = String(t.location_to || "").toUpperCase();
+        const reason = String(t.reason || "").toUpperCase();
+
+        const isInvolved =
+          loc === amazon || locFrom === amazon || locTo === amazon;
+        if (!isInvolved) return false;
+
+        const reasonIsIn = reason === "STO TRANSFER IN";
+        const reasonIsOut = reason === "STO TRANSFER OUT";
+        const fromIsAmazon = locFrom === amazon;
+
+        return (reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon);
+      });
     }
 
     if (showFulfillment) {
@@ -399,22 +411,33 @@ const TransactionsPage = () => {
             <label className="block text-xs font-medium text-gray-700 mb-1">
               SKU
             </label>
+            <input
+              type="text"
+              placeholder="Search SKU..."
+              value={skuSearch}
+              onChange={(e) => setSkuSearch(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-xs mb-2"
+            />
             <div className="max-h-32 overflow-y-auto border rounded p-2 text-xs">
-              {skuOptions.map((s) => (
-                <label key={s} className="flex items-center space-x-2 mb-1">
-                  <input
-                    type="checkbox"
-                    checked={skuFilter.includes(s)}
-                    onChange={(e) =>
-                      e.target.checked
-                        ? setSkuFilter([...skuFilter, s])
-                        : setSkuFilter(skuFilter.filter((x) => x !== s))
-                    }
-                    className="rounded text-indigo-600 h-3 w-3"
-                  />
-                  <span>{s}</span>
-                </label>
-              ))}
+              {skuOptions
+                .filter((s) =>
+                  String(s).toUpperCase().includes(skuSearch.toUpperCase()),
+                )
+                .map((s) => (
+                  <label key={s} className="flex items-center space-x-2 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={skuFilter.includes(s)}
+                      onChange={(e) =>
+                        e.target.checked
+                          ? setSkuFilter([...skuFilter, s])
+                          : setSkuFilter(skuFilter.filter((x) => x !== s))
+                      }
+                      className="rounded text-indigo-600 h-3 w-3"
+                    />
+                    <span>{s}</span>
+                  </label>
+                ))}
             </div>
           </div>
           <div>
@@ -534,7 +557,7 @@ const TransactionsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-4 gap-6 mb-8">
         {isAdmin && (
           <div className="bg-white p-4 rounded shadow border text-center">
             <p className="text-xs text-gray-500 uppercase font-semibold">
@@ -554,26 +577,65 @@ const TransactionsPage = () => {
         )}
         <div className="bg-white p-4 rounded shadow border text-center">
           <p className="text-xs text-gray-500 uppercase font-semibold">
-            Net Quantity
+            Total Inbound
           </p>
           <p className="text-2xl font-bold text-indigo-600">
-            {filteredTransactions
+            {transactions
               .reduce((acc, curr) => {
-                const q =
-                  curr.qty ||
-                  (curr.type === "inbound"
-                    ? curr.inbound_qty
-                    : -curr.outbound_qty) ||
-                  0;
-                return acc + q;
+                // 1. Must be inbound
+                const isInbound =
+                  String(curr.type || "").toLowerCase() === "inbound";
+                if (!isInbound) return acc;
+
+                // 2. Location must not be Amazon
+                const isAmazon =
+                  String(curr.location || "").toUpperCase() === "AMAZON";
+                if (isAmazon) return acc;
+
+                // 3. Reason must not be STO related
+                const reason = String(curr.reason || "").toUpperCase();
+                const isSTO = reason.includes("STO");
+                if (isSTO) return acc;
+
+                // 4. Must match SKU selection if any
+                if (
+                  skuFilter.length > 0 &&
+                  !skuFilter.includes(String(curr.sku))
+                ) {
+                  return acc;
+                }
+
+                // 5. Must match Date selection if any
+                if (startDate && endDate) {
+                  const ts = new Date(curr.timestamp);
+                  const start = new Date(startDate);
+                  const end = new Date(endDate);
+                  end.setHours(23, 59, 59, 999);
+                  if (ts < start || ts > end) return acc;
+                }
+
+                const qty = curr.inbound_qty || curr.qty || 0;
+                return acc + Math.abs(qty);
               }, 0)
               .toLocaleString()}
           </p>
         </div>
         <div className="bg-white p-4 rounded shadow border text-center">
-          <p className="text-xs text-gray-500 uppercase font-semibold">Count</p>
-          <p className="text-2xl font-bold text-gray-800">
-            {filteredTransactions.length.toLocaleString()}
+          <p className="text-xs text-gray-500 uppercase font-semibold">
+            Filtered Qty
+          </p>
+          <p className="text-2xl font-bold text-orange-600">
+            {filteredTransactions
+              .reduce((acc, curr) => {
+                const qty =
+                  curr.qty ||
+                  (String(curr.type).toLowerCase() === "inbound"
+                    ? curr.inbound_qty
+                    : -curr.outbound_qty) ||
+                  0;
+                return acc + qty;
+              }, 0)
+              .toLocaleString()}
           </p>
         </div>
       </div>
