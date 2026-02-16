@@ -8,8 +8,33 @@ router.get("/", async (req, res) => {
     const movementCol = db.collection("movement");
     const mmCol = db.collection("MM");
 
-    // Fetch movements, sorted by timestamp descending by default
-    const mvList = await movementCol.find({}).sort({ timestamp: -1 }).toArray();
+    // Optional exact search by transaction number
+    // Example: GET /api/movements?txnNum=100001
+    const txnNumRaw =
+      req.query.txnNum ?? req.query.transaction_num ?? req.query.transactionNum;
+    const txnNum = typeof txnNumRaw === "string" ? txnNumRaw.trim() : "";
+
+    // Fetch movements, sorted by timestamp descending by default.
+    // If txnNum is provided, return ONLY the exact match.
+    let mvList = [];
+    if (txnNum) {
+      const maybeNumber = Number(txnNum);
+      const txnQuery = Number.isNaN(maybeNumber)
+        ? { transaction_num: txnNum }
+        : {
+            $or: [
+              { transaction_num: txnNum },
+              { transaction_num: maybeNumber },
+            ],
+          };
+
+      mvList = await movementCol
+        .find(txnQuery)
+        .sort({ timestamp: -1 })
+        .toArray();
+    } else {
+      mvList = await movementCol.find({}).sort({ timestamp: -1 }).toArray();
+    }
 
     // Get active SKUs
     const activeSkusDocs = await mmCol

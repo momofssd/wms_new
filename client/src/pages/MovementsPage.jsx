@@ -23,6 +23,11 @@ const MovementsPage = () => {
   const [selectedMvDetails, setSelectedMvDetails] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // If txn search is active, we avoid filtering client-side and instead fetch exact match
+  // from the API. This prevents partial matches.
+  const [txnSearchResults, setTxnSearchResults] = useState(null);
+  const [txnSearchLoading, setTxnSearchLoading] = useState(false);
+
   const isAdmin = user?.role?.toLowerCase() === "admin";
 
   useEffect(() => {
@@ -34,6 +39,9 @@ const MovementsPage = () => {
       const res = await axios.get("http://localhost:5000/api/movements");
       const data = res.data;
       setMovements(data);
+
+      // Reset any txn search view when full list is fetched
+      setTxnSearchResults(null);
 
       // Extract filter options
       const allTypes = [...new Set(data.map((m) => m.movement_type))].sort();
@@ -67,45 +75,91 @@ const MovementsPage = () => {
     }
   };
 
+  // Fetch exact txn result when selectedTxn changes.
+  // Note: we trigger only when the field is non-empty; clearing it returns to normal filter mode.
   useEffect(() => {
+    const txn = String(selectedTxn || "").trim();
+    if (!txn) {
+      setTxnSearchResults(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        setTxnSearchLoading(true);
+        const res = await axios.get("http://localhost:5000/api/movements", {
+          params: { txnNum: txn },
+          signal: controller.signal,
+        });
+        setTxnSearchResults(res.data);
+      } catch (err) {
+        // Ignore aborts; log other errors
+        if (!axios.isCancel?.(err) && err.name !== "CanceledError") {
+          console.error("Error searching movement by txn", err);
+        }
+        setTxnSearchResults([]);
+      } finally {
+        setTxnSearchLoading(false);
+      }
+    }, 250); // small debounce while typing
+
+    return () => {
+      controller.abort();
+      clearTimeout(t);
+    };
+  }, [selectedTxn]);
+
+  useEffect(() => {
+    // When txn search is active, we display API results only (exact match).
+    // We don't run the normal client-side filtering because it would create partial matches.
+    if (txnSearchResults !== null) {
+      const sorted = [...txnSearchResults].sort(
+        (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+      );
+      setFilteredMovements(sorted);
+      return;
+    }
+
     let filtered = [...movements].sort(
       (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
     );
 
-    if (selectedTxn) {
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+      filtered = filtered.filter((m) => {
+        const ts = new Date(m.timestamp);
+        return ts >= start && ts <= end;
+      });
+    }
+
+    if (selectedTypes.length > 0) {
       filtered = filtered.filter((m) =>
-        String(m.transaction_num).includes(selectedTxn),
+        selectedTypes.includes(m.movement_type),
       );
-    } else {
-      if (startDate && endDate) {
-        const start = new Date(startDate);
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        filtered = filtered.filter((m) => {
-          const ts = new Date(m.timestamp);
-          return ts >= start && ts <= end;
-        });
-      }
+    }
 
-      if (selectedTypes.length > 0) {
-        filtered = filtered.filter((m) =>
-          selectedTypes.includes(m.movement_type),
+    if (selectedSkus.length > 0) {
+      filtered = filtered.filter((m) => {
+        const mvSkus = (m.details || []).map((d) =>
+          String(d.sku || "").toUpperCase(),
         );
-      }
-
-      if (selectedSkus.length > 0) {
-        filtered = filtered.filter((m) => {
-          const mvSkus = (m.details || []).map((d) =>
-            String(d.sku || "").toUpperCase(),
-          );
-          // Changed to 'some' so it works as an OR filter, making it easier to see items
-          return selectedSkus.some((sku) => mvSkus.includes(sku));
-        });
-      }
+        // OR filter (any selected SKU)
+        return selectedSkus.some((sku) => mvSkus.includes(sku));
+      });
     }
 
     setFilteredMovements(filtered);
-  }, [startDate, endDate, selectedTypes, selectedSkus, selectedTxn, movements]);
+  }, [
+    startDate,
+    endDate,
+    selectedTypes,
+    selectedSkus,
+    movements,
+    txnSearchResults,
+  ]);
 
   const handleDelete = async (txnNum) => {
     try {
@@ -123,8 +177,17 @@ const MovementsPage = () => {
   if (loading) return <div>Loading movements...</div>;
 
   const activeMv = movements.find(
-    (m) => String(m.transaction_num) === selectedTxn,
+    (m) => String(m.transaction_num) === String(selectedTxn || "").trim(),
   );
+
+  const activeMvFromSearch = Array.isArray(txnSearchResults)
+    ? txnSearchResults.find(
+        (m) => String(m.transaction_num) === String(selectedTxn || "").trim(),
+      )
+    : null;
+
+  const displayedActiveMv =
+    txnSearchResults !== null ? activeMvFromSearch : activeMv;
 
   return (
     <div>
@@ -226,6 +289,13 @@ const MovementsPage = () => {
           onChange={(e) => setSelectedTxn(e.target.value)}
           className="w-full max-w-xs border rounded px-3 py-2 text-sm"
         />
+        {txnSearchResults !== null && (
+          <p className="mt-2 text-xs text-gray-500">
+            {txnSearchLoading
+              ? "Searching exact transaction_num..."
+              : `Exact search mode: ${filteredMovements.length} result(s)`}
+          </p>
+        )}
       </div>
 
       <div className="bg-white shadow border rounded overflow-hidden mb-8">
@@ -288,7 +358,7 @@ const MovementsPage = () => {
       <hr className="mb-8" />
 
       <h2 className="text-xl font-bold mb-4">Details</h2>
-      {activeMv ? (
+      {displayedActiveMv ? (
         <div className="space-y-6">
           {isAdmin && (
             <div className="bg-orange-50 border border-orange-200 p-4 rounded">
@@ -296,9 +366,11 @@ const MovementsPage = () => {
                 ⚠️ **Admin Action**: Deleting this movement will reverse all
                 inventory changes and remove related transactions.
               </p>
-              {confirmDelete !== activeMv.transaction_num ? (
+              {confirmDelete !== displayedActiveMv.transaction_num ? (
                 <button
-                  onClick={() => setConfirmDelete(activeMv.transaction_num)}
+                  onClick={() =>
+                    setConfirmDelete(displayedActiveMv.transaction_num)
+                  }
                   className="flex items-center bg-white border border-red-300 text-red-600 px-4 py-2 rounded text-sm hover:bg-red-50"
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
@@ -310,7 +382,9 @@ const MovementsPage = () => {
                     Confirm deletion?
                   </span>
                   <button
-                    onClick={() => handleDelete(activeMv.transaction_num)}
+                    onClick={() =>
+                      handleDelete(displayedActiveMv.transaction_num)
+                    }
                     className="bg-red-600 text-white px-4 py-1 rounded text-sm hover:bg-red-700"
                   >
                     Yes
@@ -348,7 +422,7 @@ const MovementsPage = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {(activeMv.details || []).map((d, idx) => (
+                {(displayedActiveMv.details || []).map((d, idx) => (
                   <tr key={idx}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {d.sku}
