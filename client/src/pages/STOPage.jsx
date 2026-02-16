@@ -13,6 +13,7 @@ const STOPage = () => {
   const [available, setAvailable] = useState(0);
   const [inventory, setInventory] = useState([]);
   const [message, setMessage] = useState({ type: "", text: "" });
+  const [preview, setPreview] = useState(null);
   const [completion, setCompletion] = useState(null);
 
   useEffect(() => {
@@ -80,7 +81,7 @@ const STOPage = () => {
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (fromLoc === toLoc) {
       setMessage({
@@ -90,21 +91,29 @@ const STOPage = () => {
       return;
     }
 
+    // Show preview/confirmation screen without submitting
+    const mmItem = skus.find((s) => s.sku === selectedSku);
+    setPreview({
+      sku: selectedSku,
+      product_name: mmItem ? mmItem.product_name : "",
+      qty: qty,
+      from_loc: fromLoc,
+      to_loc: toLoc,
+    });
+    setMessage({ type: "", text: "" });
+  };
+
+  const handleConfirm = async () => {
     try {
       const res = await axios.post("http://localhost:5000/api/sto/submit", {
-        sku: selectedSku,
-        fromLocation: fromLoc,
-        toLocation: toLoc,
-        qty: qty,
+        sku: preview.sku,
+        fromLocation: preview.from_loc,
+        toLocation: preview.to_loc,
+        qty: preview.qty,
       });
 
-      const mmItem = skus.find((s) => s.sku === selectedSku);
       setCompletion({
-        sku: selectedSku,
-        product_name: mmItem ? mmItem.product_name : "",
-        qty: qty,
-        from_loc: fromLoc,
-        to_loc: toLoc,
+        ...preview,
         transaction_num: res.data.txnNum,
         timestamp: new Date().toLocaleString(),
       });
@@ -113,13 +122,20 @@ const STOPage = () => {
       setSelectedSku("");
       setQty(1);
       setToLoc("");
+      setPreview(null);
       fetchInventory();
     } catch (err) {
       setMessage({
         type: "error",
         text: err.response?.data?.message || "STO failed",
       });
+      setPreview(null);
     }
+  };
+
+  const handleCancel = () => {
+    setPreview(null);
+    setMessage({ type: "", text: "" });
   };
 
   return (
@@ -130,7 +146,7 @@ const STOPage = () => {
         transactions and a STO movement record).
       </p>
 
-      {!completion ? (
+      {!preview && !completion ? (
         <div className="max-w-4xl bg-white p-8 rounded shadow border">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-2 gap-8">
@@ -234,6 +250,55 @@ const STOPage = () => {
             )}
           </form>
         </div>
+      ) : preview ? (
+        <div className="max-w-2xl bg-white p-8 rounded shadow border border-blue-200">
+          <h2 className="text-xl font-bold text-blue-700 mb-6 flex items-center">
+            <span className="mr-2">📋</span> Review STO Transaction Details
+          </h2>
+
+          <div className="space-y-4 mb-8">
+            <h3 className="text-lg font-semibold border-b pb-2">
+              Please confirm the following details
+            </h3>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="text-gray-500 space-y-2">
+                <p>SKU:</p>
+                <p>Product Name:</p>
+                <p>Quantity:</p>
+                <p>From Location:</p>
+                <p>To Location:</p>
+              </div>
+              <div className="font-medium space-y-2 text-gray-900">
+                <p>{preview.sku}</p>
+                <p>{preview.product_name}</p>
+                <p>{preview.qty}</p>
+                <p>{preview.from_loc}</p>
+                <p>{preview.to_loc}</p>
+              </div>
+            </div>
+          </div>
+
+          {message.text && message.type === "error" && (
+            <div className="p-3 rounded bg-red-50 text-red-700 border border-red-200 text-sm mb-4">
+              {message.text}
+            </div>
+          )}
+
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={handleCancel}
+              className="bg-gray-500 text-white px-12 py-2 rounded font-medium hover:bg-gray-600"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirm}
+              className="bg-indigo-600 text-white px-12 py-2 rounded font-medium hover:bg-indigo-700"
+            >
+              Confirm
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="max-w-2xl bg-white p-8 rounded shadow border border-green-200">
           <h2 className="text-xl font-bold text-green-700 mb-6 flex items-center">
@@ -278,7 +343,7 @@ const STOPage = () => {
               }}
               className="bg-indigo-600 text-white px-12 py-2 rounded font-medium hover:bg-indigo-700"
             >
-              Continue
+              OK
             </button>
           </div>
         </div>

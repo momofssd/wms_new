@@ -11,6 +11,8 @@ const HomePage = () => {
   const [skus, setSkus] = useState([]);
   const [selectedLocations, setSelectedLocations] = useState([]);
   const [selectedSkus, setSelectedSkus] = useState([]);
+  const [skuSearch, setSkuSearch] = useState("");
+  const [itemsToShow, setItemsToShow] = useState(50);
 
   const isAdmin = user?.role?.toLowerCase() === "admin";
 
@@ -69,6 +71,31 @@ const HomePage = () => {
     }
   };
 
+  const downloadCSV = () => {
+    const headers = ["SKU", "Product Name", "Location", "Quantity"];
+    const csvRows = [
+      headers.join(","),
+      ...filteredInventory.map((item) =>
+        [
+          `"${item.sku}"`,
+          `"${item.product_name}"`,
+          `"${item.location}"`,
+          item.quantity,
+        ].join(","),
+      ),
+    ];
+
+    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.setAttribute("hidden", "");
+    a.setAttribute("href", url);
+    a.setAttribute("download", "inventory.csv");
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   if (loading) return <div>Loading inventory...</div>;
 
   return (
@@ -104,32 +131,59 @@ const HomePage = () => {
         </div>
 
         <div className="bg-white p-4 rounded shadow border">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter by SKU
-          </label>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Filter by SKU
+            </label>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setSelectedSkus(skus)}
+                className="text-xs text-indigo-600 hover:text-indigo-800"
+              >
+                Select All
+              </button>
+              <button
+                onClick={() => setSelectedSkus([])}
+                className="text-xs text-red-600 hover:text-red-800"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+          <input
+            type="text"
+            placeholder="Search SKU..."
+            value={skuSearch}
+            onChange={(e) => setSkuSearch(e.target.value)}
+            className="w-full border rounded px-2 py-1 mb-2 text-sm"
+          />
           <div className="max-h-32 overflow-y-auto border rounded p-2">
-            {skus.map((sku) => (
-              <label key={sku} className="flex items-center space-x-2 mb-1">
-                <input
-                  type="checkbox"
-                  checked={selectedSkus.includes(sku)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedSkus([...selectedSkus, sku]);
-                    } else {
-                      setSelectedSkus(selectedSkus.filter((s) => s !== sku));
-                    }
-                  }}
-                  className="rounded text-indigo-600"
-                />
-                <span className="text-sm">{sku}</span>
-              </label>
-            ))}
+            {skus
+              .filter((sku) =>
+                sku.toLowerCase().includes(skuSearch.toLowerCase()),
+              )
+              .map((sku) => (
+                <label key={sku} className="flex items-center space-x-2 mb-1">
+                  <input
+                    type="checkbox"
+                    checked={selectedSkus.includes(sku)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedSkus([...selectedSkus, sku]);
+                      } else {
+                        setSelectedSkus(selectedSkus.filter((s) => s !== sku));
+                      }
+                    }}
+                    className="rounded text-indigo-600"
+                  />
+                  <span className="text-sm">{sku}</span>
+                </label>
+              ))}
           </div>
         </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-6 flex justify-between items-end">
         <div className="bg-white p-4 rounded shadow border w-48 text-center">
           <p className="text-xs text-gray-500 uppercase font-semibold">
             Total Quantity
@@ -140,6 +194,12 @@ const HomePage = () => {
               .toLocaleString()}
           </p>
         </div>
+        <button
+          onClick={downloadCSV}
+          className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700 transition-colors"
+        >
+          Download CSV
+        </button>
       </div>
 
       <div className="bg-white shadow border rounded overflow-hidden">
@@ -161,7 +221,7 @@ const HomePage = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200">
-            {filteredInventory.map((item) => (
+            {filteredInventory.slice(0, itemsToShow).map((item) => (
               <tr key={item._id}>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                   {item.sku}
@@ -191,6 +251,16 @@ const HomePage = () => {
             ))}
           </tbody>
         </table>
+        {filteredInventory.length > itemsToShow && (
+          <div className="p-4 text-center bg-gray-50 border-t">
+            <button
+              onClick={() => setItemsToShow(itemsToShow + 100)}
+              className="text-indigo-600 font-semibold hover:text-indigo-800"
+            >
+              Load More... ({filteredInventory.length - itemsToShow} remaining)
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
