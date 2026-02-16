@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>1D Barcode Generator</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      .container {
+        background: white;
+        padding: 40px;
+        border-radius: 15px;
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        text-align: center;
+      }
+      h1 {
+        color: #333;
+        margin-bottom: 30px;
+      }
+      svg {
+        margin: 20px 0;
+      }
+      input {
+        padding: 12px;
+        font-size: 16px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+        width: 300px;
+        margin-bottom: 15px;
+      }
+      button {
+        padding: 12px 30px;
+        font-size: 16px;
+        background: #667eea;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      button:hover {
+        background: #5568d3;
+      }
+      .info {
+        color: #666;
+        font-size: 14px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>1D Barcode Generator</h1>
+      <input
+        type="text"
+        id="barcodeInput"
+        placeholder="Enter text to encode"
+        value="123456789"
+      />
+      <br />
+      <button onclick="generateBarcode()">Generate Barcode</button>
+      <br />
+      <svg id="barcode"></svg>
+      <div class="info">Using Code 128 format</div>
+    </div>
+
+    <script>
+      function generateBarcode() {
+        const input =
+          document.getElementById("barcodeInput").value || "123456789";
+        JsBarcode("#barcode", input, {
+          format: "CODE128",
+          width: 2,
+          height: 100,
+          displayValue: true,
+          fontSize: 16,
+        });
+      }
+
+      // Generate initial barcode on load
+      generateBarcode();
+    </script>
+  </body>
+</html>

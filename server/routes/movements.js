@@ -21,19 +21,29 @@ router.get("/", async (req, res) => {
         .map((doc) => String(doc.sku).trim().toUpperCase()),
     );
 
-    // Filter movements to only include those with active SKUs in their details
-    const filteredMvList = mvList.filter((mv) => {
-      const details = mv.details || [];
-      if (Array.isArray(details) && details.length > 0) {
-        return details.some((detail) => {
-          const sku = String(detail.sku || "")
-            .trim()
-            .toUpperCase();
-          return activeSkus.has(sku);
-        });
-      }
-      return true;
-    });
+    const normalizeSku = (sku) =>
+      String(sku || "")
+        .trim()
+        .toUpperCase();
+
+    // Keep only ACTIVE SKUs inside each movement's details.
+    // Also drop movements that *had* details originally but end up with zero active details.
+    const filteredMvList = mvList
+      .map((mv) => {
+        const hadDetails = Array.isArray(mv.details) && mv.details.length > 0;
+        const nextDetails = Array.isArray(mv.details)
+          ? mv.details.filter((detail) =>
+              activeSkus.has(normalizeSku(detail.sku)),
+            )
+          : mv.details;
+
+        return { ...mv, details: nextDetails, __hadDetails: hadDetails };
+      })
+      .filter((mv) => {
+        if (!mv.__hadDetails) return true;
+        return Array.isArray(mv.details) && mv.details.length > 0;
+      })
+      .map(({ __hadDetails, ...mv }) => mv);
 
     res.json(filteredMvList);
   } catch (err) {
