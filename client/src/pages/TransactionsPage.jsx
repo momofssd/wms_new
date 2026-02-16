@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
 const TransactionsPage = () => {
@@ -17,6 +17,7 @@ const TransactionsPage = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [showFBA, setShowFBA] = useState(false);
+  const [showFulfillment, setShowFulfillment] = useState(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -25,7 +26,7 @@ const TransactionsPage = () => {
   // Shipment Record states
   const [showShipmentRecord, setShowShipmentRecord] = useState(false);
   const [shipmentPage, setShipmentPage] = useState(0);
-  const [shipmentData, setShipmentData] = useState([]);
+  const [allShipmentData, setAllShipmentData] = useState([]);
 
   // Options
   const [skuOptions, setSkuOptions] = useState([]);
@@ -36,6 +37,7 @@ const TransactionsPage = () => {
 
   useEffect(() => {
     fetchTransactions();
+    fetchAllShipments();
   }, []);
 
   const fetchTransactions = async () => {
@@ -65,6 +67,17 @@ const TransactionsPage = () => {
     } catch (err) {
       console.error("Error fetching transactions", err);
       setLoading(false);
+    }
+  };
+
+  const fetchAllShipments = async () => {
+    try {
+      const res = await axios.get(
+        "http://localhost:5000/api/transactions/extract-shipments",
+      );
+      setAllShipmentData(res.data);
+    } catch (err) {
+      console.error("Error fetching all shipments", err);
     }
   };
 
@@ -118,6 +131,17 @@ const TransactionsPage = () => {
       );
     }
 
+    if (showFulfillment) {
+      filtered = filtered.filter((t) => {
+        const isOutbound = String(t.type || "").toLowerCase() === "outbound";
+        const noToLoc =
+          !t.location_to ||
+          String(t.location_to).trim() === "" ||
+          String(t.location_to).toLowerCase() === "none";
+        return isOutbound && noToLoc;
+      });
+    }
+
     setFilteredTransactions(filtered);
     setCurrentPage(1); // Reset to first page when filters change
   }, [
@@ -130,29 +154,43 @@ const TransactionsPage = () => {
     startDate,
     endDate,
     showFBA,
+    showFulfillment,
   ]);
 
-  const handleExtractShipments = async () => {
-    try {
-      console.log(
-        "Extracting shipments from",
-        filteredTransactions.length,
-        "transactions",
-      );
-      const res = await axios.post(
-        "http://localhost:5000/api/transactions/extract-shipments",
-        {
-          transactions: filteredTransactions,
-        },
-      );
-      console.log("Extracted:", res.data);
-      setShipmentData(res.data);
-      setShipmentPage(0);
-      setShowShipmentRecord(true);
-    } catch (err) {
-      console.error("Error extracting shipments", err);
-    }
-  };
+  // Derived shipment data based on current transaction filters
+  const shipmentData = useMemo(() => {
+    // If no filters are active, return all
+    const isFiltered =
+      skuFilter.length > 0 ||
+      nameFilter ||
+      shipmentFilter ||
+      locFilter.length > 0 ||
+      typeFilter.length !== typeOptions.length ||
+      showFBA ||
+      showFulfillment ||
+      (startDate && endDate);
+
+    if (!isFiltered) return allShipmentData;
+
+    // To be efficient, we filter allShipmentData by the timestamps of filteredTransactions
+    const filteredTimestamps = new Set(
+      filteredTransactions.map((t) => t.timestamp),
+    );
+    return allShipmentData.filter((s) => filteredTimestamps.has(s.timestamp));
+  }, [
+    allShipmentData,
+    filteredTransactions,
+    skuFilter,
+    nameFilter,
+    shipmentFilter,
+    locFilter,
+    typeFilter,
+    typeOptions,
+    showFBA,
+    showFulfillment,
+    startDate,
+    endDate,
+  ]);
 
   // Get current page's items
   const indexOfLastItem = currentPage * itemsPerPage;
@@ -261,22 +299,19 @@ const TransactionsPage = () => {
         <h1 className="text-2xl font-bold">Transactions</h1>
         <div className="flex space-x-2">
           <button
-            onClick={handleExtractShipments}
-            className="bg-white border border-gray-300 text-gray-700 px-4 py-2 rounded text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm"
+            onClick={() => {
+              setShowShipmentRecord(!showShipmentRecord);
+              setShipmentPage(0);
+            }}
+            className={`${showShipmentRecord ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-300 text-gray-700"} border px-4 py-2 rounded text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm`}
           >
             📋 Shipment ID Record
-          </button>
-          <button
-            onClick={fetchTransactions}
-            className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 shadow-sm"
-          >
-            Refresh Data
           </button>
         </div>
       </div>
 
       {showShipmentRecord && (
-        <div className="bg-white border border-indigo-200 rounded shadow-md p-4 mb-8">
+        <div className="bg-white border border-indigo-200 rounded shadow-md p-4 mb-8 transition-all">
           <div className="flex justify-between items-center mb-4 pb-2 border-b">
             <h3 className="text-sm font-bold text-indigo-900">
               USPS Tracking Numbers (Page {shipmentPage + 1}/
@@ -458,6 +493,15 @@ const TransactionsPage = () => {
                   className="rounded text-indigo-600"
                 />
                 <span className="font-medium">FBA (Amazon) Only</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={showFulfillment}
+                  onChange={(e) => setShowFulfillment(e.target.checked)}
+                  className="rounded text-indigo-600"
+                />
+                <span className="font-medium">Fulfillment Only</span>
               </label>
             </div>
           </div>

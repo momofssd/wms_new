@@ -41,42 +41,48 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/extract-shipments", async (req, res) => {
-  const { transactions } = req.body;
-  if (!transactions || !Array.isArray(transactions)) {
-    return res.status(400).json({ message: "Invalid transactions data" });
-  }
-
+router.get("/extract-shipments", async (req, res) => {
   try {
+    const db = mongoose.connection.db;
+    const transactionsCol = db.collection("transactions");
+
+    // We fetch only outbound transactions with shipment_id or likely tracking info
+    // to minimize memory impact and handle logic server-side
+    const query = {
+      type: "outbound",
+      $or: [
+        { shipment_id: { $ne: null, $ne: "" } },
+        { reason: { $regex: /9[2-5]\d{20}/ } }, // Quick regex for potential USPS
+      ],
+    };
+
+    const outboundTxs = await transactionsCol
+      .find(query)
+      .sort({ timestamp: -1 })
+      .toArray();
+
     const shipmentData = [];
-    transactions.forEach((t) => {
-      // Look in both shipment_id and any other likely fields
+    outboundTxs.forEach((t) => {
       const sid = String(t.shipment_id || "").trim();
       const reason = String(t.reason || "").trim();
-      const type = String(t.type || "").toLowerCase();
 
-      // Original logic only checked shipment_id on outbound
-      if (type === "outbound") {
-        // Extract from shipment_id
-        if (sid) {
-          const extracted = extractTrackingNumbersFromText(sid);
-          extracted.forEach((tracking) => {
-            shipmentData.push({
-              tracking,
-              timestamp: t.timestamp,
-            });
+      if (sid) {
+        const extracted = extractTrackingNumbersFromText(sid);
+        extracted.forEach((tracking) => {
+          shipmentData.push({
+            tracking,
+            timestamp: t.timestamp,
           });
-        }
-        // Also check reason just in case
-        if (reason) {
-          const extracted = extractTrackingNumbersFromText(reason);
-          extracted.forEach((tracking) => {
-            shipmentData.push({
-              tracking,
-              timestamp: t.timestamp,
-            });
+        });
+      }
+      if (reason) {
+        const extracted = extractTrackingNumbersFromText(reason);
+        extracted.forEach((tracking) => {
+          shipmentData.push({
+            tracking,
+            timestamp: t.timestamp,
           });
-        }
+        });
       }
     });
 
