@@ -41,16 +41,34 @@ const OutboundPage = () => {
     }
   }, [defaultLocation]);
 
-  useEffect(() => {
-    if (
-      activeTab === "scan" &&
-      sessionActive &&
-      currentLoc &&
-      scannerRef.current
-    ) {
-      scannerRef.current.focus();
+  // Force Focus Helper
+  const forceFocus = (ref) => {
+    if (ref.current) {
+      ref.current.focus();
     }
-  }, [activeTab, sessionActive, currentLoc, scanPair]);
+  };
+
+  // Keep focus locked
+  useEffect(() => {
+    const handleGlobalClick = () => {
+      if (activeTab === "scan" && sessionActive && currentLoc) {
+        forceFocus(scannerRef);
+      }
+    };
+
+    window.addEventListener("click", handleGlobalClick);
+
+    const interval = setInterval(() => {
+      if (activeTab === "scan" && sessionActive && currentLoc) {
+        forceFocus(scannerRef);
+      }
+    }, 500); // Aggressive refocus every 500ms
+
+    return () => {
+      window.removeEventListener("click", handleGlobalClick);
+      clearInterval(interval);
+    };
+  }, [activeTab, sessionActive, currentLoc]);
 
   const fetchLocations = async () => {
     try {
