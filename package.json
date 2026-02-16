@@ -1,0 +1,22 @@
+{
+  "name": "whs-reac",
+  "version": "1.0.0",
+  "description": "WMS React Rebuild",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd server && npm run dev",
+    "client": "cd client && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@zxing/library": "^0.21.3",
+    "canvas": "^3.2.1",
+    "multer": "^2.0.2",
+    "pdf-parse-fork": "^1.2.0",
+    "tailwindcss": "^4.1.18"
+  }
+}
