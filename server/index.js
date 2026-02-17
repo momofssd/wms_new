@@ -32,9 +32,13 @@ app.use("/api/transactions", require("./routes/transactions"));
 if (process.env.NODE_ENV === "production") {
   app.use(express.static(path.join(__dirname, "../client/dist")));
 
-  // Handle React routing, return all requests to React app
-  app.get("/*", (req, res) => {
-    res.sendFile(path.join(__dirname, "../client/dist", "index.html"));
+  // Handle React routing - catch all non-API routes
+  app.use((req, res, next) => {
+    if (!req.path.startsWith("/api")) {
+      res.sendFile(path.join(__dirname, "../client/dist", "index.html"));
+    } else {
+      next();
+    }
   });
 } else {
   // Development fallback
