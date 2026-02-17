@@ -299,7 +299,7 @@ const MovementsPage = () => {
         )}
       </div>
 
-      <div className="bg-white shadow border rounded overflow-hidden mb-8">
+      <div className="bg-white shadow border rounded overflow-x-auto mb-8">
         <div className="max-h-[600px] overflow-y-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0">
@@ -409,7 +409,7 @@ const MovementsPage = () => {
             </div>
           )}
 
-          <div className="bg-white shadow border rounded overflow-hidden">
+          <div className="bg-white shadow border rounded overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

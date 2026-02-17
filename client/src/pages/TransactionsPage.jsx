@@ -781,7 +781,7 @@ const TransactionsPage = () => {
         </div>
       </div>
 
-      <div className="bg-white shadow border rounded overflow-hidden mb-4">
+      <div className="bg-white shadow border rounded overflow-x-auto mb-4">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50 text-[10px]">
             <tr>
