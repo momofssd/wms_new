@@ -32,7 +32,7 @@ const Layout = () => {
       <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile Header */}
         <header className="md:hidden flex items-center justify-between p-4 bg-gray-100 border-b">
-          <h1 className="text-xl font-bold">Inv WMS</h1>
+          <h1 className="text-xl font-bold">WMS System</h1>
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             className="p-2 rounded-md hover:bg-gray-200"

@@ -20,6 +20,10 @@ const MovementsPage = () => {
   const [types, setTypes] = useState([]);
   const [skus, setSkus] = useState([]);
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
+
   const [selectedTxn, setSelectedTxn] = useState("");
   const [selectedMvDetails, setSelectedMvDetails] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
@@ -153,6 +157,7 @@ const MovementsPage = () => {
     }
 
     setFilteredMovements(filtered);
+    setCurrentPage(1);
   }, [
     startDate,
     endDate,
@@ -161,6 +166,15 @@ const MovementsPage = () => {
     movements,
     txnSearchResults,
   ]);
+
+  // Pagination calculations
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredMovements.slice(
+    indexOfFirstItem,
+    indexOfLastItem,
+  );
+  const totalPages = Math.ceil(filteredMovements.length / itemsPerPage);
 
   const handleDelete = async (txnNum) => {
     try {
@@ -299,6 +313,69 @@ const MovementsPage = () => {
         )}
       </div>
 
+      {/* Pagination Controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 border rounded shadow gap-4 mb-4">
+        <div className="flex items-center space-x-2 text-sm text-gray-700">
+          <span>Show</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => {
+              setItemsPerPage(Number(e.target.value));
+              setCurrentPage(1);
+            }}
+            className="border rounded px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500"
+          >
+            {[10, 15, 25, 50, 100, 250, 500].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+          <span>entries</span>
+          <span className="ml-4 text-gray-500">
+            Showing {filteredMovements.length > 0 ? indexOfFirstItem + 1 : 0} to{" "}
+            {Math.min(indexOfLastItem, filteredMovements.length)} of{" "}
+            {filteredMovements.length} entries
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => setCurrentPage(1)}
+            disabled={currentPage === 1}
+            className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          >
+            First
+          </button>
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          >
+            Previous
+          </button>
+          <div className="px-4 py-1 text-sm font-medium">
+            Page {currentPage} of {totalPages || 1}
+          </div>
+          <button
+            onClick={() =>
+              setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+            }
+            disabled={currentPage === totalPages || totalPages === 0}
+            className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          >
+            Next
+          </button>
+          <button
+            onClick={() => setCurrentPage(totalPages)}
+            disabled={currentPage === totalPages || totalPages === 0}
+            className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+          >
+            Last
+          </button>
+        </div>
+      </div>
+
       <div className="bg-white shadow border rounded overflow-x-auto mb-8">
         <div className="max-h-[600px] overflow-y-auto">
           <table className="min-w-full divide-y divide-gray-200">
@@ -328,7 +405,7 @@ const MovementsPage = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredMovements.map((m) => (
+              {currentItems.map((m) => (
                 <tr
                   key={m.transaction_num}
                   className={`cursor-pointer hover:bg-gray-50 ${selectedTxn === String(m.transaction_num) ? "bg-indigo-50" : ""}`}

@@ -7,7 +7,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [defaultLocation, setDefaultLocation] = useState(
-    localStorage.getItem("defaultLocation") || "",
+    localStorage.getItem("defaultLocation") || "None",
   );
   const [audioEnabled, setAudioEnabled] = useState(
     localStorage.getItem("audioEnabled") === "true",
@@ -28,9 +28,8 @@ export const AuthProvider = ({ children }) => {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      if (parsedUser.default_location) {
-        setDefaultLocation(parsedUser.default_location);
-      }
+      // Always default to "None" on mount/refresh as per requirement
+      setDefaultLocation("None");
     }
     setLoading(false);
   }, []);
@@ -126,9 +125,8 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem("user", JSON.stringify(user));
       api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       setUser(user);
-      if (user.default_location) {
-        setDefaultLocation(user.default_location);
-      }
+      // Always default to "None" on login as per requirement
+      setDefaultLocation("None");
       return { success: true };
     } catch (err) {
       return {
@@ -155,7 +153,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("audioEnabled");
     delete api.defaults.headers.common["Authorization"];
     setUser(null);
-    setDefaultLocation("");
+    setDefaultLocation("None");
     setAudioEnabled(false);
     setShowInactivityModal(false);
   };

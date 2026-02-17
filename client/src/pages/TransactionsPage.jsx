@@ -23,7 +23,7 @@ const TransactionsPage = () => {
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
 
   // Shipment Record states
   const [showShipmentRecord, setShowShipmentRecord] = useState(false);
@@ -732,7 +732,7 @@ const TransactionsPage = () => {
             }}
             className="border rounded px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500"
           >
-            {[10, 25, 50, 100, 250, 500].map((size) => (
+            {[10, 15, 25, 50, 100, 250, 500].map((size) => (
               <option key={size} value={size}>
                 {size}
               </option>

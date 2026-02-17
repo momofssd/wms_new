@@ -133,7 +133,7 @@ const Sidebar = ({
         >
           <div className="flex items-center justify-between w-full">
             {(!isCollapsed || isMobileMenuOpen) && (
-              <h1 className="text-xl font-bold">Inv WMS</h1>
+              <h1 className="text-xl font-bold">WMS System</h1>
             )}
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
@@ -174,7 +174,7 @@ const Sidebar = ({
                 onChange={(e) => updateDefaultLocation(e.target.value)}
                 className="w-full text-sm border rounded px-2 py-1 bg-white"
               >
-                <option value="">Select Location</option>
+                <option value="None">None</option>
                 {locations.map((loc) => (
                   <option key={loc} value={loc}>
                     {loc}
