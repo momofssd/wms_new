@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../api";
+import TransactionChart from "../components/TransactionChart";
 import { useAuth } from "../context/AuthContext";
 
 const TransactionsPage = () => {
@@ -26,6 +27,7 @@ const TransactionsPage = () => {
 
   // Shipment Record states
   const [showShipmentRecord, setShowShipmentRecord] = useState(false);
+  const [showTransactionChart, setShowTransactionChart] = useState(false);
   const [shipmentPage, setShipmentPage] = useState(0);
   const [allShipmentData, setAllShipmentData] = useState([]);
 
@@ -212,10 +214,10 @@ const TransactionsPage = () => {
   const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
 
   const calculateCharges = () => {
-    let total = 0;
     let fulfillmentQty = 0;
     let fbaQty = 0;
 
+    // Use filteredTransactions for Fulfillment Charge
     filteredTransactions.forEach((t) => {
       const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
 
@@ -226,22 +228,73 @@ const TransactionsPage = () => {
       ) {
         fulfillmentQty += qty;
       }
-
-      // FBA Charge ($0.50)
-      const isAmazon =
-        t.location === "AMAZON" ||
-        t.location_from === "AMAZON" ||
-        t.location_to === "AMAZON";
-      if (isAmazon) {
-        const reason = (t.reason || "").toUpperCase();
-        if (
-          (reason === "STO TRANSFER IN" && t.location_from !== "AMAZON") ||
-          (reason === "STO TRANSFER OUT" && t.location_from === "AMAZON")
-        ) {
-          fbaQty += qty;
-        }
-      }
     });
+
+    // Use specific FBA logic for FBA Charge
+    const amazon = "AMAZON";
+    const fbaTransactions = transactions.filter((t) => {
+      const loc = String(t.location || "").toUpperCase();
+      const locFrom = String(t.location_from || "").toUpperCase();
+      const locTo = String(t.location_to || "").toUpperCase();
+      const reason = String(t.reason || "").toUpperCase();
+
+      const isInvolved =
+        loc === amazon || locFrom === amazon || locTo === amazon;
+      if (!isInvolved) return false;
+
+      const reasonIsIn = reason === "STO TRANSFER IN";
+      const reasonIsOut = reason === "STO TRANSFER OUT";
+      const fromIsAmazon = locFrom === amazon;
+
+      const matchesFBARule =
+        (reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon);
+      if (!matchesFBARule) return false;
+
+      // Apply ALL active filters except showFulfillment and showFBA themselves
+      if (skuFilter.length > 0 && !skuFilter.includes(t.sku)) return false;
+
+      if (nameFilter) {
+        if (
+          !(t.product_name || "")
+            .toUpperCase()
+            .includes(nameFilter.toUpperCase())
+        )
+          return false;
+      }
+
+      if (shipmentFilter) {
+        if (
+          !(t.shipment_id || "")
+            .toUpperCase()
+            .includes(shipmentFilter.toUpperCase())
+        )
+          return false;
+      }
+
+      if (locFilter.length > 0 && !locFilter.includes(t.location)) return false;
+
+      if (typeFilter.length > 0 && !typeFilter.includes(t.type)) return false;
+
+      if (startDate && endDate) {
+        const ts = new Date(t.timestamp);
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (ts < start || ts > end) return false;
+      }
+
+      return true;
+    });
+
+    fbaQty = fbaTransactions.reduce((acc, curr) => {
+      const qty =
+        curr.qty ||
+        (String(curr.type).toLowerCase() === "inbound"
+          ? curr.inbound_qty
+          : -curr.outbound_qty) ||
+        0;
+      return acc + qty;
+    }, 0);
 
     return {
       total: fulfillmentQty * 2 + fbaQty * 0.5,
@@ -310,8 +363,18 @@ const TransactionsPage = () => {
         <div className="flex space-x-2">
           <button
             onClick={() => {
+              setShowTransactionChart(!showTransactionChart);
+              if (!showTransactionChart) setShowShipmentRecord(false);
+            }}
+            className={`${showTransactionChart ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-300 text-gray-700"} border px-4 py-2 rounded text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm`}
+          >
+            📈 Transaction Chart
+          </button>
+          <button
+            onClick={() => {
               setShowShipmentRecord(!showShipmentRecord);
               setShipmentPage(0);
+              if (!showShipmentRecord) setShowTransactionChart(false);
             }}
             className={`${showShipmentRecord ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-300 text-gray-700"} border px-4 py-2 rounded text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm`}
           >
@@ -319,6 +382,23 @@ const TransactionsPage = () => {
           </button>
         </div>
       </div>
+
+      {showTransactionChart && (
+        <div className="bg-white border border-indigo-200 rounded shadow-md p-4 mb-8 transition-all">
+          <div className="flex justify-between items-center mb-4 pb-2 border-b">
+            <h3 className="text-sm font-bold text-indigo-900">
+              Transaction Volume Over Time (By Week)
+            </h3>
+            <button
+              onClick={() => setShowTransactionChart(false)}
+              className="text-gray-400 hover:text-gray-600 text-xl font-bold"
+            >
+              &times;
+            </button>
+          </div>
+          <TransactionChart />
+        </div>
+      )}
 
       {showShipmentRecord && (
         <div className="bg-white border border-indigo-200 rounded shadow-md p-4 mb-8 transition-all">

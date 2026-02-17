@@ -103,4 +103,102 @@ router.get("/extract-shipments", async (req, res) => {
   }
 });
 
+router.get("/stats", async (req, res) => {
+  try {
+    const db = mongoose.connection.db;
+    const transactionsCol = db.collection("transactions");
+    const mmCol = db.collection("MM");
+
+    // Fetch transactions
+    const txList = await transactionsCol.find({}).toArray();
+
+    // Fetch active SKUs to filter like the main endpoint
+    const activeSkusDocs = await mmCol
+      .find({}, { projection: { sku: 1, active: 1, _id: 0 } })
+      .toArray();
+    const activeSkus = new Set(
+      activeSkusDocs
+        .filter((doc) => doc.active !== false)
+        .map((doc) => String(doc.sku).trim().toUpperCase()),
+    );
+
+    const statsByWeek = {};
+
+    txList.forEach((t) => {
+      const sku = String(t.sku || "")
+        .trim()
+        .toUpperCase();
+      if (!activeSkus.has(sku)) return;
+
+      const date = new Date(t.timestamp);
+      if (isNaN(date.getTime())) return;
+
+      // Get week identifier (YYYY-WW or Start of Week Date)
+      // Use Sunday as start of week
+      const day = date.getDay();
+      const diff = date.getDate() - day;
+      const startOfWeek = new Date(date.setDate(diff));
+      startOfWeek.setHours(0, 0, 0, 0);
+      const weekKey = startOfWeek.toISOString().split("T")[0];
+
+      if (!statsByWeek[weekKey]) {
+        statsByWeek[weekKey] = {
+          week: weekKey,
+          fba: 0,
+          fulfillment: 0,
+          inbound: 0,
+          charge: 0,
+        };
+      }
+
+      const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
+      const type = String(t.type || "").toLowerCase();
+      const loc = String(t.location || "").toUpperCase();
+      const locFrom = String(t.location_from || "").toUpperCase();
+      const locTo = String(t.location_to || "").toUpperCase();
+      const reason = String(t.reason || "").toUpperCase();
+
+      // FBA Logic (matches TransactionsPage.jsx)
+      const isAmazon =
+        loc === "AMAZON" || locFrom === "AMAZON" || locTo === "AMAZON";
+      if (isAmazon) {
+        const reasonIsIn = reason === "STO TRANSFER IN";
+        const reasonIsOut = reason === "STO TRANSFER OUT";
+        const fromIsAmazon = locFrom === "AMAZON";
+        if ((reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon)) {
+          statsByWeek[weekKey].fba += qty;
+          statsByWeek[weekKey].charge += qty * 0.5;
+        }
+      }
+
+      // Fulfillment Logic (matches TransactionsPage.jsx)
+      const isOutbound = type === "outbound";
+      const noToLoc =
+        !t.location_to ||
+        String(t.location_to).trim() === "" ||
+        String(t.location_to).toLowerCase() === "none";
+      if (isOutbound && noToLoc) {
+        statsByWeek[weekKey].fulfillment += qty;
+        statsByWeek[weekKey].charge += qty * 2.0;
+      }
+
+      // Inbound Logic (matches TransactionsPage.jsx "Total Inbound" summary)
+      const isInbound = type === "inbound";
+      const isLocAmazon = loc === "AMAZON";
+      const isSTO = reason.includes("STO");
+      if (isInbound && !isLocAmazon && !isSTO) {
+        statsByWeek[weekKey].inbound += qty;
+      }
+    });
+
+    const result = Object.values(statsByWeek).sort((a, b) =>
+      a.week.localeCompare(b.week),
+    );
+    res.json(result);
+  } catch (err) {
+    console.error("Stats error:", err);
+    res.status(500).json({ message: "Error fetching stats" });
+  }
+});
+
 module.exports = router;
