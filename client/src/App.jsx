@@ -10,10 +10,11 @@ import OutboundPage from "./pages/OutboundPage";
 import ShipmentTrackingPage from "./pages/ShipmentTrackingPage";
 import STOPage from "./pages/STOPage";
 import TransactionsPage from "./pages/TransactionsPage";
+import { useScannerHotkeys } from "./utils/scanner";
 
 function App() {
   // Prevent scanners from sending F7/F12 (and other function keys) that open devtools.
-  // If you want this only in prod, wrap with: if (import.meta.env.PROD) ...
+  useScannerHotkeys();
 
   return (
     <AuthProvider>
