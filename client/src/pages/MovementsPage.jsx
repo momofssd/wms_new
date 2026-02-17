@@ -1,6 +1,7 @@
 import axios from "axios";
 import { Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 const MovementsPage = () => {
@@ -36,7 +37,7 @@ const MovementsPage = () => {
 
   const fetchMovements = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/movements");
+      const res = await api.get("/movements");
       const data = res.data;
       setMovements(data);
 
@@ -88,7 +89,7 @@ const MovementsPage = () => {
     const t = setTimeout(async () => {
       try {
         setTxnSearchLoading(true);
-        const res = await axios.get("http://localhost:5000/api/movements", {
+        const res = await api.get("/movements", {
           params: { txnNum: txn },
           signal: controller.signal,
         });
@@ -163,7 +164,7 @@ const MovementsPage = () => {
 
   const handleDelete = async (txnNum) => {
     try {
-      await axios.delete(`http://localhost:5000/api/movements/${txnNum}`);
+      await api.delete(`/movements/${txnNum}`);
       setConfirmDelete(null);
       fetchMovements();
     } catch (err) {

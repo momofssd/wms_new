@@ -1,5 +1,5 @@
-import axios from "axios";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import api from "../api";
 
 const AuthContext = createContext(null);
 
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }) => {
     if (token && storedUser) {
       const parsedUser = JSON.parse(storedUser);
       setUser(parsedUser);
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       if (parsedUser.default_location) {
         setDefaultLocation(parsedUser.default_location);
       }
@@ -117,14 +117,14 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (username, password) => {
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/login", {
+      const res = await api.post("/auth/login", {
         username,
         password,
       });
       const { token, user } = res.data;
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
-      axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
       setUser(user);
       if (user.default_location) {
         setDefaultLocation(user.default_location);
@@ -153,7 +153,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("user");
     localStorage.removeItem("defaultLocation");
     localStorage.removeItem("audioEnabled");
-    delete axios.defaults.headers.common["Authorization"];
+    delete api.defaults.headers.common["Authorization"];
     setUser(null);
     setDefaultLocation("");
     setAudioEnabled(false);
@@ -182,7 +182,7 @@ export const AuthProvider = ({ children }) => {
   const updateDefaultLocation = async (loc) => {
     setDefaultLocation(loc);
     try {
-      await axios.put("http://localhost:5000/api/auth/default-location", {
+      await api.put("/auth/default-location", {
         location: loc,
       });
       // Update local user object too

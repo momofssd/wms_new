@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 const STOPage = () => {
@@ -43,9 +43,7 @@ const STOPage = () => {
 
   const fetchLocations = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/locations",
-      );
+      const res = await api.get("/master-data/locations");
       setLocations(
         res.data
           .filter((l) => l.active)
@@ -59,9 +57,7 @@ const STOPage = () => {
 
   const fetchSkus = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/materials",
-      );
+      const res = await api.get("/master-data/materials");
       setSkus(
         res.data
           .filter((m) => m.active)
@@ -74,7 +70,7 @@ const STOPage = () => {
 
   const fetchInventory = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/inventory");
+      const res = await api.get("/inventory");
       setInventory(res.data);
     } catch (err) {
       console.error("Error fetching inventory", err);
@@ -105,7 +101,7 @@ const STOPage = () => {
 
   const handleConfirm = async () => {
     try {
-      const res = await axios.post("http://localhost:5000/api/sto/submit", {
+      const res = await api.post("/sto/submit", {
         sku: preview.sku,
         fromLocation: preview.from_loc,
         toLocation: preview.to_loc,

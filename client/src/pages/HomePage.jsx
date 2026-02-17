@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 const HomePage = () => {
@@ -22,7 +22,7 @@ const HomePage = () => {
 
   const fetchInventory = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/inventory");
+      const res = await api.get("/inventory");
       setInventory(res.data);
 
       const locs = [...new Set(res.data.map((item) => item.location))].sort();
@@ -57,7 +57,7 @@ const HomePage = () => {
 
     try {
       const reducedBy = item.quantity - newQty;
-      await axios.put("http://localhost:5000/api/inventory/update-quantity", {
+      await api.put("/inventory/update-quantity", {
         id: item._id,
         newQuantity: newQty,
         reducedBy,

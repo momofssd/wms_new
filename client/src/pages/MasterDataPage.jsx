@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useEffect, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 const MasterDataPage = () => {
@@ -30,9 +30,7 @@ const MasterDataPage = () => {
 
   const fetchMaterials = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/materials",
-      );
+      const res = await api.get("/master-data/materials");
       setMaterials(res.data);
     } catch (err) {
       console.error("Error fetching materials", err);
@@ -41,9 +39,7 @@ const MasterDataPage = () => {
 
   const fetchLocations = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/locations",
-      );
+      const res = await api.get("/master-data/locations");
       setLocations(res.data);
     } catch (err) {
       console.error("Error fetching locations", err);
@@ -57,10 +53,7 @@ const MasterDataPage = () => {
       return;
     }
     try {
-      const res = await axios.post(
-        "http://localhost:5000/api/master-data/materials",
-        newMaterial,
-      );
+      const res = await api.post("/master-data/materials", newMaterial);
       setMessage({ type: "success", text: res.data.message });
       setNewMaterial({ sku: "", product_name: "", active: true });
       fetchMaterials();
@@ -76,10 +69,7 @@ const MasterDataPage = () => {
       return;
     }
     try {
-      const res = await axios.post(
-        "http://localhost:5000/api/master-data/locations",
-        newLocation,
-      );
+      const res = await api.post("/master-data/locations", newLocation);
       setMessage({ type: "success", text: res.data.message });
       setNewLocation({ location: "", active: true });
       fetchLocations();
@@ -119,7 +109,7 @@ const MasterDataPage = () => {
     }));
     if (changes.length === 0) return;
     try {
-      await axios.put("http://localhost:5000/api/master-data/materials", {
+      await api.put("/master-data/materials", {
         changes,
       });
       setMessage({
@@ -140,7 +130,7 @@ const MasterDataPage = () => {
     }));
     if (changes.length === 0) return;
     try {
-      await axios.put("http://localhost:5000/api/master-data/locations", {
+      await api.put("/master-data/locations", {
         changes,
       });
       setMessage({

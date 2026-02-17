@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useEffect, useMemo, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 const TransactionsPage = () => {
@@ -43,7 +43,7 @@ const TransactionsPage = () => {
 
   const fetchTransactions = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/transactions");
+      const res = await api.get("/transactions");
       const data = res.data;
       setTransactions(data);
 
@@ -73,9 +73,7 @@ const TransactionsPage = () => {
 
   const fetchAllShipments = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/transactions/extract-shipments",
-      );
+      const res = await api.get("/transactions/extract-shipments");
       setAllShipmentData(res.data);
     } catch (err) {
       console.error("Error fetching all shipments", err);

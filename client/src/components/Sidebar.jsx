@@ -1,4 +1,3 @@
-import axios from "axios";
 import {
   ArrowRightLeft,
   Box,
@@ -14,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
 const Sidebar = () => {
@@ -39,9 +39,7 @@ const Sidebar = () => {
 
   const fetchLocations = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/locations",
-      );
+      const res = await api.get("/master-data/locations");
       setLocations(res.data.filter((l) => l.active).map((l) => l.location));
     } catch (err) {
       console.error("Error fetching locations", err);

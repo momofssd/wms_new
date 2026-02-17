@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useState } from "react";
+import api from "../api";
 
 const ShipmentTrackingPage = () => {
   const [extractedNumbers, setExtractedNumbers] = useState([]);
@@ -23,10 +23,7 @@ const ShipmentTrackingPage = () => {
         if (file.type === "application/pdf") {
           const formData = new FormData();
           formData.append("pdf", file);
-          const res = await axios.post(
-            "http://localhost:5000/api/outbound/process-pdf",
-            formData,
-          );
+          const res = await api.post("/outbound/process-pdf", formData);
           allExtracted = [...allExtracted, ...res.data.trackingNumbers];
         }
       }

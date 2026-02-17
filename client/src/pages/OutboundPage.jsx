@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useEffect, useRef, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { playLast4Digits } from "../utils/audio";
 
@@ -72,9 +72,7 @@ const OutboundPage = () => {
 
   const fetchLocations = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/outbound/locations",
-      );
+      const res = await api.get("/outbound/locations");
       setLocations(res.data);
     } catch (err) {
       console.error("Error fetching locations", err);
@@ -83,9 +81,7 @@ const OutboundPage = () => {
 
   const fetchSkus = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/materials",
-      );
+      const res = await api.get("/master-data/materials");
       setSkus(res.data.filter((m) => m.active));
     } catch (err) {
       console.error("Error fetching skus", err);
@@ -130,13 +126,10 @@ const OutboundPage = () => {
       const tracking = newPair[1];
 
       try {
-        const res = await axios.post(
-          "http://localhost:5000/api/outbound/validate-scan",
-          {
-            sku,
-            location: currentLoc,
-          },
-        );
+        const res = await api.post("/outbound/validate-scan", {
+          sku,
+          location: currentLoc,
+        });
 
         const entry = {
           timestamp: new Date().toISOString(),
@@ -173,19 +166,13 @@ const OutboundPage = () => {
     formData.append("pdf", pdfFile);
 
     try {
-      const pdfRes = await axios.post(
-        "http://localhost:5000/api/outbound/process-pdf",
-        formData,
-      );
+      const pdfRes = await api.post("/outbound/process-pdf", formData);
       const trackingNumbers = pdfRes.data.trackingNumbers;
 
-      const valRes = await axios.post(
-        "http://localhost:5000/api/outbound/validate-scan",
-        {
-          sku: batchSku,
-          location: batchLoc,
-        },
-      );
+      const valRes = await api.post("/outbound/validate-scan", {
+        sku: batchSku,
+        location: batchLoc,
+      });
 
       const newEntries = trackingNumbers.map((tracking) => ({
         timestamp: new Date().toISOString(),
@@ -216,12 +203,9 @@ const OutboundPage = () => {
     if (sessionLog.length === 0 || confirmed) return;
 
     try {
-      const res = await axios.post(
-        "http://localhost:5000/api/outbound/confirm-session",
-        {
-          pending: sessionLog,
-        },
-      );
+      const res = await api.post("/outbound/confirm-session", {
+        pending: sessionLog,
+      });
       setMessage({ type: "success", text: res.data.message });
       setConfirmed(true);
     } catch (err) {

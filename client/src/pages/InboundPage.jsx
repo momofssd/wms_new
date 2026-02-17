@@ -1,5 +1,5 @@
-import axios from "axios";
 import { useEffect, useRef, useState } from "react";
+import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { playLast4Digits } from "../utils/audio";
 
@@ -76,9 +76,7 @@ const InboundPage = () => {
 
   const fetchLocations = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/locations",
-      );
+      const res = await api.get("/master-data/locations");
       const activeLocs = res.data
         .filter((l) => l.active)
         .map((l) => l.location);
@@ -90,9 +88,7 @@ const InboundPage = () => {
 
   const fetchSkus = async () => {
     try {
-      const res = await axios.get(
-        "http://localhost:5000/api/master-data/materials",
-      );
+      const res = await api.get("/master-data/materials");
       const activeSkusData = res.data.filter((m) => m.active);
       setSkus(activeSkusData.map((m) => m.sku));
 
@@ -120,7 +116,7 @@ const InboundPage = () => {
   const handleMultiSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post("http://localhost:5000/api/inbound/submit", {
+      const res = await api.post("/inbound/submit", {
         items: [{ sku: multiScannedSku, qty: multiQty }],
         location: multiLoc,
       });
@@ -176,7 +172,7 @@ const InboundPage = () => {
     });
 
     try {
-      const res = await axios.post("http://localhost:5000/api/inbound/submit", {
+      const res = await api.post("/inbound/submit", {
         items: Object.values(aggregates),
         location: singleLoc,
       });
@@ -199,7 +195,7 @@ const InboundPage = () => {
       return;
     }
     try {
-      const res = await axios.post("http://localhost:5000/api/inbound/submit", {
+      const res = await api.post("/inbound/submit", {
         items: [{ sku: manualSku, qty: manualQty }],
         location: manualLoc,
       });
