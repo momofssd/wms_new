@@ -37,6 +37,28 @@ export const playLast4Digits = (sku, enabled) => {
   }, 50);
 };
 
+export const playInvalidInput = (enabled) => {
+  if (!enabled) return;
+
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+  }
+
+  setTimeout(() => {
+    const utterance = new SpeechSynthesisUtterance("Invalid Input");
+    const voices = window.speechSynthesis.getVoices();
+    if (voices.length > 0) {
+      utterance.voice =
+        voices.find((v) => v.lang.startsWith("en")) || voices[0];
+    }
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+    utterance.volume = 1.0;
+
+    window.speechSynthesis.speak(utterance);
+  }, 50);
+};
+
 // Workaround for some browsers requiring a user gesture to initialize speech
 export const initAudio = () => {
   const utterance = new SpeechSynthesisUtterance("");

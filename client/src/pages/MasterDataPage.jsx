@@ -47,7 +47,7 @@ const MasterDataPage = () => {
   };
 
   const handleCreateMaterial = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!newMaterial.sku || !newMaterial.product_name) {
       setMessage({ type: "error", text: "SKU and Product Name are required" });
       return;
@@ -63,7 +63,7 @@ const MasterDataPage = () => {
   };
 
   const handleCreateLocation = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     if (!newLocation.location) {
       setMessage({ type: "error", text: "Location is required" });
       return;
@@ -185,10 +185,7 @@ const MasterDataPage = () => {
           </p>
 
           {!isCustomer && (
-            <form
-              onSubmit={handleCreateMaterial}
-              className="grid grid-cols-4 gap-4 mb-8 bg-gray-50 p-4 rounded border"
-            >
+            <div className="grid grid-cols-4 gap-4 mb-8 bg-gray-50 p-4 rounded border">
               <input
                 type="text"
                 placeholder="SKU"
@@ -224,12 +221,12 @@ const MasterDataPage = () => {
                 </span>
               </label>
               <button
-                type="submit"
+                onClick={handleCreateMaterial}
                 className="bg-indigo-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-indigo-700"
               >
                 Create Material
               </button>
-            </form>
+            </div>
           )}
 
           <div className="bg-white shadow border rounded overflow-hidden">
@@ -299,10 +296,7 @@ const MasterDataPage = () => {
           </p>
 
           {!isCustomer && (
-            <form
-              onSubmit={handleCreateLocation}
-              className="grid grid-cols-3 gap-4 mb-8 bg-gray-50 p-4 rounded border"
-            >
+            <div className="grid grid-cols-3 gap-4 mb-8 bg-gray-50 p-4 rounded border">
               <input
                 type="text"
                 placeholder="Location"
@@ -326,12 +320,12 @@ const MasterDataPage = () => {
                 </span>
               </label>
               <button
-                type="submit"
+                onClick={handleCreateLocation}
                 className="bg-indigo-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-indigo-700"
               >
                 Create Location
               </button>
-            </form>
+            </div>
           )}
 
           <div className="bg-white shadow border rounded overflow-hidden">

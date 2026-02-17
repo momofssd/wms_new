@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { playLast4Digits } from "../utils/audio";
+import { useScannerInput } from "../utils/scannerInput";
 
 const OutboundPage = () => {
   const { user, defaultLocation, audioEnabled } = useAuth();
@@ -14,6 +15,12 @@ const OutboundPage = () => {
   const [sessionActive, setSessionActive] = useState(false);
   const [currentLoc, setCurrentLoc] = useState("");
   const [scanInput, setScanInput] = useState("");
+
+  const {
+    isDisabled: isScanDisabled,
+    handleInputChange: handleScanInputChange,
+  } = useScannerInput(setScanInput);
+
   const [scanPair, setScanPair] = useState([]);
   const [sessionLog, setSessionLog] = useState([]);
   const [confirmed, setConfirmed] = useState(false);
@@ -348,9 +355,9 @@ const OutboundPage = () => {
                             type="text"
                             placeholder="SCAN SKU / SHIPMENT ID"
                             value={scanInput}
-                            onChange={(e) => setScanInput(e.target.value)}
-                            className="w-full border rounded px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
-                            disabled={confirmed}
+                            onChange={handleScanInputChange}
+                            className={`w-full border rounded px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none ${isScanDisabled ? "bg-red-100 border-red-500 cursor-not-allowed" : ""}`}
+                            disabled={confirmed || isScanDisabled}
                           />
                         </form>
 

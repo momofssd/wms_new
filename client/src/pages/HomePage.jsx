@@ -23,7 +23,15 @@ const HomePage = () => {
   const fetchInventory = async () => {
     try {
       const res = await api.get("/inventory");
-      setInventory(res.data);
+      // Sort by SKU then by Location
+      const sortedData = [...res.data].sort((a, b) => {
+        if (a.sku < b.sku) return -1;
+        if (a.sku > b.sku) return 1;
+        if (a.location < b.location) return -1;
+        if (a.location > b.location) return 1;
+        return 0;
+      });
+      setInventory(sortedData);
 
       const locs = [...new Set(res.data.map((item) => item.location))].sort();
       const items = [...new Set(res.data.map((item) => item.sku))].sort();
@@ -32,7 +40,7 @@ const HomePage = () => {
       setSkus(items);
       setSelectedLocations(locs);
       setSelectedSkus(items);
-      setFilteredInventory(res.data);
+      setFilteredInventory(sortedData);
       setLoading(false);
     } catch (err) {
       console.error("Error fetching inventory", err);
@@ -232,7 +240,7 @@ const HomePage = () => {
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                   {item.location}
                 </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
                   {isAdmin ? (
                     <input
                       type="number"
@@ -241,7 +249,7 @@ const HomePage = () => {
                       onChange={(e) =>
                         handleQuantityChange(item, parseInt(e.target.value))
                       }
-                      className="w-20 border rounded px-2 py-1"
+                      className="w-20 border-2 border-gray-400 rounded px-2 py-1 font-bold text-gray-900"
                     />
                   ) : (
                     item.quantity

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 import { playLast4Digits } from "../utils/audio";
+import { useScannerInput } from "../utils/scannerInput";
 
 const InboundPage = () => {
   const { user, defaultLocation, audioEnabled } = useAuth();
@@ -17,10 +18,21 @@ const InboundPage = () => {
   const [multiQty, setMultiQty] = useState(1);
   const [multiLoc, setMultiLoc] = useState("");
 
+  const {
+    isDisabled: isMultiDisabled,
+    handleInputChange: handleMultiInputChange,
+  } = useScannerInput(setMultiScanInput);
+
   // Single Entry State
   const [singleSessionActive, setSingleSessionActive] = useState(false);
   const [singleLoc, setSingleLoc] = useState("");
   const [singleScanInput, setSingleScanInput] = useState("");
+
+  const {
+    isDisabled: isSingleDisabled,
+    handleInputChange: handleSingleInputChange,
+  } = useScannerInput(setSingleScanInput);
+
   const [singleSessionLog, setSingleSessionLog] = useState([]);
   const [skuMap, setSkuMap] = useState({});
 
@@ -267,8 +279,9 @@ const InboundPage = () => {
                   type="text"
                   placeholder="SCAN SKU"
                   value={multiScanInput}
-                  onChange={(e) => setMultiScanInput(e.target.value)}
-                  className="flex-1 border rounded px-4 py-2"
+                  onChange={handleMultiInputChange}
+                  disabled={isMultiDisabled}
+                  className={`flex-1 border rounded px-4 py-2 ${isMultiDisabled ? "bg-red-100 border-red-500 cursor-not-allowed" : ""}`}
                   autoComplete="off"
                 />
                 <button
@@ -394,8 +407,9 @@ const InboundPage = () => {
                         type="text"
                         placeholder="SCAN SKU"
                         value={singleScanInput}
-                        onChange={(e) => setSingleScanInput(e.target.value)}
-                        className="w-full border rounded px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        onChange={handleSingleInputChange}
+                        disabled={isSingleDisabled}
+                        className={`w-full border rounded px-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none ${isSingleDisabled ? "bg-red-100 border-red-500 cursor-not-allowed" : ""}`}
                         autoComplete="off"
                       />
                     </form>
