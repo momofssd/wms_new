@@ -4,18 +4,18 @@
   "description": "WMS React Rebuild",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "start": "cd server && npm start",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && npm run dev",
-    "client": "cd client && npm run dev"
-  },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
+    "client": "cd client && npm run dev",
+    "build": "cd client && npm run build"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.1.18",
     "canvas": "^3.2.1",
     "multer": "^2.0.2",
     "pdf-parse-fork": "^1.2.0",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "concurrently": "^8.2.2"
   }
 }
