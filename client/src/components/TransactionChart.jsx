@@ -9,10 +9,14 @@ import {
   YAxis,
 } from "recharts";
 import api from "../api";
+import { useAuth } from "../context/AuthContext";
 
 const TransactionChart = () => {
+  const { user } = useAuth();
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -69,16 +73,18 @@ const TransactionChart = () => {
               fontSize: 12,
             }}
           />
-          <YAxis
-            yAxisId="right"
-            orientation="right"
-            label={{
-              value: "Total Charge ($)",
-              angle: 90,
-              position: "insideRight",
-              fontSize: 12,
-            }}
-          />
+          {isAdmin && (
+            <YAxis
+              yAxisId="right"
+              orientation="right"
+              label={{
+                value: "Total Charge ($)",
+                angle: 90,
+                position: "insideRight",
+                fontSize: 12,
+              }}
+            />
+          )}
           <Tooltip
             formatter={(value, name) => {
               if (name === "Total Charge ($)")
@@ -112,15 +118,17 @@ const TransactionChart = () => {
             name="Total Inbound (by week)"
             strokeWidth={3}
           />
-          <Line
-            yAxisId="right"
-            type="monotone"
-            dataKey="charge"
-            stroke="#ef4444"
-            name="Total Charge ($)"
-            strokeWidth={3}
-            strokeDasharray="5 5"
-          />
+          {isAdmin && (
+            <Line
+              yAxisId="right"
+              type="monotone"
+              dataKey="charge"
+              stroke="#ef4444"
+              name="Total Charge ($)"
+              strokeWidth={3}
+              strokeDasharray="5 5"
+            />
+          )}
         </LineChart>
       </div>
     </div>
