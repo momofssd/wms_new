@@ -358,9 +358,9 @@ const TransactionsPage = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
         <h1 className="text-2xl font-bold">Transactions</h1>
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={() => {
               setShowTransactionChart(!showTransactionChart);
@@ -403,7 +403,7 @@ const TransactionsPage = () => {
       {showShipmentRecord && (
         <div className="bg-white border border-indigo-200 rounded shadow-md p-4 mb-8 transition-all">
           <div className="flex justify-between items-center mb-4 pb-2 border-b">
-            <h3 className="text-sm font-bold text-indigo-900">
+            <h3 className="text-sm font-bold text-indigo-900 pr-4">
               USPS Tracking Numbers (Page {shipmentPage + 1}/
               {totalShipmentPages || 1}) | Date Range: {dateRangeStr}
             </h3>
@@ -435,17 +435,26 @@ const TransactionsPage = () => {
               )}
 
               {totalShipmentPages > 1 && (
-                <div className="flex justify-center items-center space-x-4 pt-2">
-                  <button
-                    disabled={shipmentPage === 0}
-                    onClick={() => setShipmentPage((p) => p - 1)}
-                    className="px-3 py-1 border rounded text-xs bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                  >
-                    ⬅️ Previous
-                  </button>
-                  <span className="text-xs font-medium text-gray-600">
-                    Page {shipmentPage + 1} of {totalShipmentPages}
-                  </span>
+                <div className="flex flex-wrap justify-center items-center gap-4 pt-2">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      disabled={shipmentPage === 0}
+                      onClick={() => setShipmentPage((p) => p - 1)}
+                      className="px-3 py-1 border rounded text-xs bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                      ⬅️ Previous
+                    </button>
+                    <span className="text-xs font-medium text-gray-600">
+                      Page {shipmentPage + 1} of {totalShipmentPages}
+                    </span>
+                    <button
+                      disabled={shipmentPage === totalShipmentPages - 1}
+                      onClick={() => setShipmentPage((p) => p + 1)}
+                      className="px-3 py-1 border rounded text-xs bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                      Next ➡️
+                    </button>
+                  </div>
                   <div className="flex items-center space-x-2">
                     <span className="text-xs text-gray-500">Go to:</span>
                     <input
@@ -461,13 +470,6 @@ const TransactionsPage = () => {
                       className="w-16 border rounded px-2 py-1 text-xs text-center"
                     />
                   </div>
-                  <button
-                    disabled={shipmentPage === totalShipmentPages - 1}
-                    onClick={() => setShipmentPage((p) => p + 1)}
-                    className="px-3 py-1 border rounded text-xs bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                  >
-                    Next ➡️
-                  </button>
                 </div>
               )}
             </div>
@@ -484,7 +486,7 @@ const TransactionsPage = () => {
         <p className="text-xs font-semibold text-gray-500 uppercase mb-4">
           Filters
         </p>
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
               SKU
@@ -607,8 +609,8 @@ const TransactionsPage = () => {
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-4 gap-4 mt-4">
-          <div className="col-span-2 flex space-x-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-4">
+          <div className="sm:col-span-2 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
             <div className="flex-1">
               <label className="block text-xs font-medium text-gray-700 mb-1">
                 Start Date
@@ -635,7 +637,7 @@ const TransactionsPage = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {isAdmin && (
           <div className="bg-white p-4 rounded shadow border text-center">
             <p className="text-xs text-gray-500 uppercase font-semibold">

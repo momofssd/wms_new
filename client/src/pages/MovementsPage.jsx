@@ -201,7 +201,7 @@ const MovementsPage = () => {
         <p className="text-xs font-semibold text-gray-500 uppercase mb-4">
           Filters
         </p>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">

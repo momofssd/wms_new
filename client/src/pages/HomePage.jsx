@@ -110,7 +110,7 @@ const HomePage = () => {
     <div>
       <h1 className="text-2xl font-bold mb-6">Inventory Management</h1>
 
-      <div className="grid grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
         <div className="bg-white p-4 rounded shadow border">
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Filter by Location
@@ -191,8 +191,8 @@ const HomePage = () => {
         </div>
       </div>
 
-      <div className="mb-6 flex justify-between items-end">
-        <div className="bg-white p-4 rounded shadow border w-48 text-center">
+      <div className="mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+        <div className="bg-white p-4 rounded shadow border w-full sm:w-48 text-center">
           <p className="text-xs text-gray-500 uppercase font-semibold">
             Total Quantity
           </p>
