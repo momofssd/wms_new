@@ -27,6 +27,7 @@ app.use("/api/movements", require("./routes/movements"));
 app.use("/api/outbound", require("./routes/outbound"));
 app.use("/api/sto", require("./routes/sto"));
 app.use("/api/transactions", require("./routes/transactions"));
+app.use("/api/backup", require("./routes/backup"));
 
 // Serve static files from React build (in production)
 if (process.env.NODE_ENV === "production") {

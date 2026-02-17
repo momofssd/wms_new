@@ -35,6 +35,8 @@ const Sidebar = ({
   } = useAuth();
   const location = useLocation();
   const [locations, setLocations] = useState([]);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [backupMessage, setBackupMessage] = useState({ text: "", type: "" });
 
   const isCustomer = user?.role?.toLowerCase() === "customer";
   const isAdmin = user?.role?.toLowerCase() === "admin";
@@ -78,6 +80,31 @@ const Sidebar = ({
   const closeMobileMenu = () => {
     if (isMobileMenuOpen) {
       setIsMobileMenuOpen(false);
+    }
+  };
+
+  const handleBackup = async () => {
+    setBackupMessage({ text: "", type: "" });
+    setIsBackingUp(true);
+    try {
+      const res = await api.post("/backup", {
+        source: "warehouse_db",
+        target: "warehouse_db_copy",
+      });
+      setBackupMessage({
+        text: res.data.message || "Backup successful!",
+        type: "success",
+      });
+      // Clear message after 5 seconds
+      setTimeout(() => setBackupMessage({ text: "", type: "" }), 5000);
+    } catch (err) {
+      console.error("Backup failed", err);
+      setBackupMessage({
+        text: err.response?.data?.message || "Backup failed!",
+        type: "error",
+      });
+    } finally {
+      setIsBackingUp(false);
     }
   };
 
@@ -229,20 +256,35 @@ const Sidebar = ({
               : ""
           }`}
         >
+          {isAdmin &&
+            backupMessage.text &&
+            (!isCollapsed || isMobileMenuOpen) && (
+              <div
+                className={`mb-2 p-2 text-xs rounded border ${
+                  backupMessage.type === "success"
+                    ? "bg-green-50 border-green-200 text-green-700"
+                    : "bg-red-50 border-red-200 text-red-700"
+                }`}
+              >
+                {backupMessage.text}
+              </div>
+            )}
           {isAdmin && (
             <button
-              title={isCollapsed && !isMobileMenuOpen ? "Clone Database" : ""}
+              onClick={handleBackup}
+              disabled={isBackingUp}
+              title={isCollapsed && !isMobileMenuOpen ? "Backup Database" : ""}
               className={`w-full flex items-center ${
                 isCollapsed && !isMobileMenuOpen ? "md:justify-center" : "px-2"
-              } py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 mb-2`}
+              } py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 mb-2 disabled:opacity-50`}
             >
               <Box
                 className={`${
                   isCollapsed && !isMobileMenuOpen ? "" : "mr-3"
-                } h-5 w-5 flex-shrink-0`}
+                } h-5 w-5 flex-shrink-0 ${isBackingUp ? "animate-spin" : ""}`}
               />
               {(!isCollapsed || isMobileMenuOpen) && (
-                <span>Clone Database</span>
+                <span>{isBackingUp ? "Backing up..." : "Backup Database"}</span>
               )}
             </button>
           )}
