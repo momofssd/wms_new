@@ -223,6 +223,7 @@ const TransactionsPage = () => {
         "SKU",
         "Product Name",
         "Shipment ID",
+        "Trans Num",
         "Location",
         "Type",
         "Qty",
@@ -232,9 +233,10 @@ const TransactionsPage = () => {
       // Convert transactions to CSV rows
       const rows = filteredTransactions.map((t) => [
         `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
-        `\t"${String(t.sku || "").replace(/"/g, '""')}"`,
+        `"${String(t.sku || "").replace(/"/g, '""')}"`,
         `"${String(t.product_name || "").replace(/"/g, '""')}"`,
-        `\t"${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+        `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+        `="${String(t.movement_transaction_num || "").replace(/"/g, '""')}"`,
         `"${String(t.location || "").replace(/"/g, '""')}"`,
         `"${String(t.type || "").replace(/"/g, '""')}"`,
         t.qty || (t.type === "inbound" ? t.inbound_qty : -t.outbound_qty),
@@ -862,6 +864,9 @@ const TransactionsPage = () => {
                 Shipment ID
               </th>
               <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase">
+                Trans Num
+              </th>
+              <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase">
                 Loc
               </th>
               <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase">
@@ -887,7 +892,12 @@ const TransactionsPage = () => {
                 <td className="px-3 py-2 max-w-[200px] truncate">
                   {t.product_name}
                 </td>
-                <td className="px-3 py-2 whitespace-nowrap">{t.shipment_id}</td>
+                <td className="px-3 py-2 max-w-[150px] truncate">
+                  {t.shipment_id}
+                </td>
+                <td className="px-3 py-2 whitespace-nowrap">
+                  {t.movement_transaction_num}
+                </td>
                 <td className="px-3 py-2 whitespace-nowrap">{t.location}</td>
                 <td
                   className={`px-3 py-2 whitespace-nowrap capitalize font-medium ${t.type === "inbound" ? "text-green-600" : "text-orange-600"}`}
