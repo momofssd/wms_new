@@ -28,6 +28,7 @@ const TransactionsPage = () => {
   // Shipment Record states
   const [showShipmentRecord, setShowShipmentRecord] = useState(false);
   const [showTransactionChart, setShowTransactionChart] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [shipmentPage, setShipmentPage] = useState(0);
   const [allShipmentData, setAllShipmentData] = useState([]);
 
@@ -213,6 +214,60 @@ const TransactionsPage = () => {
   );
   const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
 
+  const handleDownloadCSV = () => {
+    setIsExporting(true);
+    try {
+      // Define the headers matching the table
+      const headers = [
+        "Timestamp",
+        "SKU",
+        "Product Name",
+        "Shipment ID",
+        "Location",
+        "Type",
+        "Qty",
+        "Reason",
+      ];
+
+      // Convert transactions to CSV rows
+      const rows = filteredTransactions.map((t) => [
+        `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
+        `\t"${String(t.sku || "").replace(/"/g, '""')}"`,
+        `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+        `\t"${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+        `"${String(t.location || "").replace(/"/g, '""')}"`,
+        `"${String(t.type || "").replace(/"/g, '""')}"`,
+        t.qty || (t.type === "inbound" ? t.inbound_qty : -t.outbound_qty),
+        `"${String(t.reason || "").replace(/"/g, '""')}"`,
+      ]);
+
+      // Combine headers and rows
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\n");
+
+      // Create a blob and download it
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `transactions_${new Date().toISOString().split("T")[0]}.csv`,
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Error exporting CSV", err);
+      alert("Failed to export CSV");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const calculateCharges = () => {
     let fulfillmentQty = 0;
     let fbaQty = 0;
@@ -379,6 +434,13 @@ const TransactionsPage = () => {
             className={`${showShipmentRecord ? "bg-indigo-100 border-indigo-300 text-indigo-700" : "bg-white border-gray-300 text-gray-700"} border px-4 py-2 rounded text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm`}
           >
             📋 Shipment ID Record
+          </button>
+          <button
+            onClick={handleDownloadCSV}
+            disabled={isExporting || filteredTransactions.length === 0}
+            className="bg-white border-gray-300 text-gray-700 border px-4 py-2 rounded text-sm font-medium hover:bg-gray-50 flex items-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isExporting ? "⌛ Exporting..." : "📥 Download CSV"}
           </button>
         </div>
       </div>
