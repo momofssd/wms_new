@@ -9,6 +9,7 @@ const InboundPage = () => {
   const [activeTab, setActiveTab] = useState("multi");
   const [locations, setLocations] = useState([]);
   const [skus, setSkus] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [message, setMessage] = useState({ type: "", text: "" });
 
   // Multi Entry State
@@ -47,6 +48,7 @@ const InboundPage = () => {
   useEffect(() => {
     fetchLocations();
     fetchSkus();
+    fetchTransactions();
   }, []);
 
   useEffect(() => {
@@ -114,6 +116,21 @@ const InboundPage = () => {
     }
   };
 
+  const fetchTransactions = async () => {
+    try {
+      const res = await api.get("/transactions");
+      // Filter for type 'inbound' and location NOT 'amazon'
+      const filtered = res.data.filter(
+        (t) =>
+          String(t.type).toLowerCase() === "inbound" &&
+          String(t.location || "").toLowerCase() !== "amazon",
+      );
+      setTransactions(filtered);
+    } catch (err) {
+      console.error("Error fetching transactions", err);
+    }
+  };
+
   // Multi Entry Handlers
   const handleMultiScanSubmit = (e) => {
     if (e) e.preventDefault();
@@ -132,10 +149,14 @@ const InboundPage = () => {
         items: [{ sku: multiScannedSku, qty: multiQty }],
         location: multiLoc,
       });
-      setMessage({ type: "success", text: res.data.message });
+      setMessage({
+        type: "success",
+        text: `Inbound Successful: SKU ${multiScannedSku}, QTY ${multiQty}, LOC ${multiLoc} (Movement Num: ${res.data.message.split(": ")[1] || ""})`,
+      });
       setMultiStep(1);
       setMultiScannedSku("");
       setMultiQty(1);
+      fetchTransactions();
     } catch (err) {
       setMessage({
         type: "error",
@@ -174,7 +195,7 @@ const InboundPage = () => {
   const handleSingleSubmit = async () => {
     if (singleSessionLog.length === 0 || !singleLoc) return;
 
-    // Aggregate by SKU
+    // Aggregate by SKU for the API call
     const aggregates = {};
     singleSessionLog.forEach((item) => {
       if (!aggregates[item.sku]) {
@@ -183,14 +204,26 @@ const InboundPage = () => {
       aggregates[item.sku].qty += item.qty;
     });
 
+    const itemsArray = Object.values(aggregates);
+
     try {
       const res = await api.post("/inbound/submit", {
-        items: Object.values(aggregates),
+        items: itemsArray,
         location: singleLoc,
       });
-      setMessage({ type: "success", text: res.data.message });
+
+      // Construct detailed success message for single entry
+      const summary = itemsArray
+        .map((i) => `SKU ${i.sku} (QTY ${i.qty})`)
+        .join(", ");
+      setMessage({
+        type: "success",
+        text: `Inbound Successful: ${summary} @ LOC ${singleLoc} (Movement Num: ${res.data.message.split(": ")[1] || ""})`,
+      });
+
       setSingleSessionLog([]);
       setSingleSessionActive(false);
+      fetchTransactions();
     } catch (err) {
       setMessage({
         type: "error",
@@ -211,10 +244,14 @@ const InboundPage = () => {
         items: [{ sku: manualSku, qty: manualQty }],
         location: manualLoc,
       });
-      setMessage({ type: "success", text: res.data.message });
+      setMessage({
+        type: "success",
+        text: `Inbound Successful: SKU ${manualSku}, QTY ${manualQty}, LOC ${manualLoc} (Movement Num: ${res.data.message.split(": ")[1] || ""})`,
+      });
       setManualSku("");
       setManualQty(1);
       // setManualLoc(""); // Keep location
+      fetchTransactions();
     } catch (err) {
       setMessage({
         type: "error",
@@ -544,6 +581,68 @@ const InboundPage = () => {
           </form>
         </div>
       )}
+
+      {/* Transactions Table */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold mb-4">Inbound History</h2>
+        <div className="bg-white rounded shadow border overflow-hidden">
+          <div className="max-h-[600px] overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Timestamp
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    SKU
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Qty
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Location
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Movement #
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {transactions.length > 0 ? (
+                  transactions.map((tx, idx) => (
+                    <tr key={tx._id || idx} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {new Date(tx.timestamp).toLocaleString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        {tx.sku}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {tx.inbound_qty || tx.qty}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {tx.location}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                        {tx.movement_transaction_num || "N/A"}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td
+                      colSpan="5"
+                      className="px-6 py-10 text-center text-sm text-gray-400"
+                    >
+                      No inbound transactions found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };
