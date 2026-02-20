@@ -12,6 +12,10 @@ const InboundPage = () => {
   const [transactions, setTransactions] = useState([]);
   const [message, setMessage] = useState({ type: "", text: "" });
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(15);
+
   // Multi Entry State
   const [multiStep, setMultiStep] = useState(1);
   const [multiScanInput, setMultiScanInput] = useState("");
@@ -259,6 +263,14 @@ const InboundPage = () => {
       });
     }
   };
+
+  // Pagination logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = transactions
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+    .slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(transactions.length / itemsPerPage);
 
   return (
     <div>
@@ -585,7 +597,71 @@ const InboundPage = () => {
       {/* Transactions Table */}
       <div className="mt-12">
         <h2 className="text-xl font-bold mb-4">Inbound History</h2>
-        <div className="bg-white rounded shadow border overflow-hidden">
+
+        {/* Pagination Controls */}
+        <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 border-x border-t rounded-t shadow-sm gap-4">
+          <div className="flex items-center space-x-2 text-sm text-gray-700">
+            <span>Show</span>
+            <select
+              value={itemsPerPage}
+              onChange={(e) => {
+                setItemsPerPage(Number(e.target.value));
+                setCurrentPage(1);
+              }}
+              className="border rounded px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500"
+            >
+              {[10, 15, 25, 50, 100].map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+            <span>entries</span>
+            <span className="ml-4 text-gray-500">
+              Showing {transactions.length > 0 ? indexOfFirstItem + 1 : 0} to{" "}
+              {Math.min(indexOfLastItem, transactions.length)} of{" "}
+              {transactions.length} entries
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              First
+            </button>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            <div className="px-4 py-1 text-sm font-medium">
+              Page {currentPage} of {totalPages || 1}
+            </div>
+            <button
+              onClick={() =>
+                setCurrentPage((prev) => Math.min(prev + 1, totalPages))
+              }
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages || totalPages === 0}
+              className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Last
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-b shadow border overflow-hidden">
           <div className="max-h-[600px] overflow-y-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50 sticky top-0">
@@ -608,8 +684,8 @@ const InboundPage = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {transactions.length > 0 ? (
-                  transactions.map((tx, idx) => (
+                {currentItems.length > 0 ? (
+                  currentItems.map((tx, idx) => (
                     <tr key={tx._id || idx} className="hover:bg-gray-50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(tx.timestamp).toLocaleString()}
