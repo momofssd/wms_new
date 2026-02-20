@@ -12,6 +12,7 @@ const STOPage = () => {
   const [qty, setQty] = useState(1);
   const [available, setAvailable] = useState(0);
   const [inventory, setInventory] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [message, setMessage] = useState({ type: "", text: "" });
   const [preview, setPreview] = useState(null);
   const [completion, setCompletion] = useState(null);
@@ -20,6 +21,7 @@ const STOPage = () => {
     fetchLocations();
     fetchSkus();
     fetchInventory();
+    fetchTransactions();
   }, []);
 
   useEffect(() => {
@@ -77,6 +79,21 @@ const STOPage = () => {
     }
   };
 
+  const fetchTransactions = async () => {
+    try {
+      const res = await api.get("/transactions");
+      // Filter only STO related transactions
+      const stoData = res.data.filter((t) =>
+        String(t.reason || "")
+          .toUpperCase()
+          .includes("STO"),
+      );
+      setTransactions(stoData);
+    } catch (err) {
+      console.error("Error fetching transactions", err);
+    }
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (fromLoc === toLoc) {
@@ -120,6 +137,7 @@ const STOPage = () => {
       setToLoc("");
       setPreview(null);
       fetchInventory();
+      fetchTransactions();
     } catch (err) {
       setMessage({
         type: "error",
@@ -346,44 +364,83 @@ const STOPage = () => {
       )}
 
       <div className="mt-12">
-        <h2 className="text-xl font-bold mb-4">Current Inventory</h2>
-        <div className="bg-white shadow border rounded overflow-hidden">
+        <h2 className="text-xl font-bold mb-4">STO Transaction History</h2>
+        <div className="bg-white shadow border rounded overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Timestamp
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   SKU
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Product Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Location
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Trans Num
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                  Quantity
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Loc
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Qty
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Reason
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {inventory
-                .filter((i) => i.quantity > 0)
-                .map((item, idx) => (
+            <tbody className="bg-white divide-y divide-gray-200 text-sm">
+              {[...transactions]
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                .map((t, idx) => (
                   <tr key={idx}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {item.sku}
+                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
+                      {new Date(t.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.product_name}
+                    <td className="px-4 py-4 whitespace-nowrap font-medium text-gray-900">
+                      {t.sku}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.location}
+                    <td className="px-4 py-4 max-w-xs truncate text-gray-500">
+                      {t.product_name}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-semibold">
-                      {item.quantity}
+                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
+                      {t.movement_transaction_num}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap text-gray-500">
+                      {t.location}
+                    </td>
+                    <td
+                      className={`px-4 py-4 whitespace-nowrap capitalize font-medium ${t.type === "inbound" ? "text-green-600" : "text-orange-600"}`}
+                    >
+                      {t.type}
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap font-bold text-gray-900">
+                      {t.qty ||
+                        (t.type === "inbound"
+                          ? t.inbound_qty
+                          : -t.outbound_qty)}
+                    </td>
+                    <td className="px-4 py-4 italic text-gray-500 text-xs">
+                      {t.reason}
                     </td>
                   </tr>
                 ))}
+              {transactions.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="8"
+                    className="px-4 py-8 text-center text-gray-500 italic"
+                  >
+                    No STO transactions found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
