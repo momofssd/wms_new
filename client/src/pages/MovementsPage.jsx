@@ -15,6 +15,7 @@ const MovementsPage = () => {
   const [endDate, setEndDate] = useState("");
   const [selectedTypes, setSelectedTypes] = useState([]);
   const [selectedSkus, setSelectedSkus] = useState([]);
+  const [skuSearch, setSkuSearch] = useState("");
 
   // Available filter options
   const [types, setTypes] = useState([]);
@@ -270,24 +271,35 @@ const MovementsPage = () => {
             <label className="block text-xs font-medium text-gray-700 mb-1">
               SKU Filter
             </label>
+            <input
+              type="text"
+              placeholder="Search SKU..."
+              value={skuSearch}
+              onChange={(e) => setSkuSearch(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-xs mb-2 focus:ring-1 focus:ring-indigo-500 outline-none"
+            />
             <div className="max-h-32 overflow-y-auto border rounded p-2">
-              {skus.map((s) => (
-                <label key={s} className="flex items-center space-x-2 mb-1">
-                  <input
-                    type="checkbox"
-                    checked={selectedSkus.includes(s)}
-                    onChange={(e) =>
-                      e.target.checked
-                        ? setSelectedSkus([...selectedSkus, s])
-                        : setSelectedSkus(
-                            selectedSkus.filter((sku) => sku !== s),
-                          )
-                    }
-                    className="rounded text-indigo-600 h-3 w-3"
-                  />
-                  <span className="text-xs">{s}</span>
-                </label>
-              ))}
+              {skus
+                .filter((s) =>
+                  String(s).toUpperCase().includes(skuSearch.toUpperCase()),
+                )
+                .map((s) => (
+                  <label key={s} className="flex items-center space-x-2 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedSkus.includes(s)}
+                      onChange={(e) =>
+                        e.target.checked
+                          ? setSelectedSkus([...selectedSkus, s])
+                          : setSelectedSkus(
+                              selectedSkus.filter((sku) => sku !== s),
+                            )
+                      }
+                      className="rounded text-indigo-600 h-3 w-3"
+                    />
+                    <span className="text-xs">{s}</span>
+                  </label>
+                ))}
             </div>
           </div>
         </div>
