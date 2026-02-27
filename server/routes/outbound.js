@@ -7,7 +7,9 @@ const {
   getNextOutboundTransactionNum,
   buildMovementDoc,
 } = require("../utils/movement");
-const { extractTrackingNumbersFromText } = require("../utils/tracking");
+const {
+  extractTrackingNumbersFromPDF, // upgraded: uses pdfplumber + text fallbacks
+} = require("../utils/tracking");
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -71,11 +73,15 @@ router.post("/process-pdf", upload.single("pdf"), async (req, res) => {
 
   try {
     const data = await pdfParse(req.file.buffer);
-    const text = data.text;
 
-    // In a real warehouse environment, you'd want to parse page by page
-    // pdf-parse provides the full text, but we can try to find tracking numbers in it
-    const trackingNumbers = extractTrackingNumbersFromText(text);
+    // Pass both the raw buffer (for pdfplumber word-level extraction) and the
+    // text string (as a fallback). The upgraded function deduplicates across
+    // all strategies so each tracking number is returned exactly once even if
+    // multiple pages or extraction methods find the same number.
+    const trackingNumbers = extractTrackingNumbersFromPDF(
+      req.file.buffer,
+      data.text,
+    );
 
     if (trackingNumbers.length === 0) {
       return res
