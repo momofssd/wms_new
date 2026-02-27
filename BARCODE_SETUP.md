@@ -1,187 +1,113 @@
-# Barcode Extraction Setup Guide
+# Tracking Number Extraction — Setup Guide
 
 ## Overview
 
-The outbound PDF processing feature now extracts tracking numbers directly from barcodes embedded in PDF labels, matching the functionality of the original Python application.
+USPS tracking numbers are extracted directly from the PDF's internal text structure using `pdfjs-dist`. No image rendering, no barcode scanning libraries, no system dependencies, no Python.
 
-## Changes Made
-
-### Backend (server/routes/outbound.js)
-
-- **Replaced text-based extraction** with barcode scanning using image processing
-- **Added barcode extraction function** `extractBarcodesFromPDF()` that:
-  - Converts PDF pages to PNG images using `pdf-poppler`
-  - Reads barcodes from images using `jsqr`
-  - Extracts tracking numbers from barcode data using the existing tracking pattern utility
-  - Returns an array of objects with `page` and `barcode` properties
-
-### Frontend Updates
-
-- **OutboundPage.jsx**: Updated to handle new response format `{ barcodes: [...], count: N }`
-- **ShipmentTrackingPage.jsx**: Updated to extract barcode values from the new response format
-
-## Required Dependencies
-
-### Server Dependencies
-
-Install the following npm packages in the `server` directory:
-
-```bash
-cd server
-npm install pdf-poppler jsqr jimp multer quagga
-```
-
-**Key Libraries:**
-
-- `pdf-poppler` - Converts PDF pages to PNG images
-- `jsqr` - Decodes QR codes from images
-- `quagga` - Decodes 1D barcodes (CODE128, CODE39, EAN, UPC, etc.)
-- `jimp` - Image processing library
-- `multer` - File upload handling
-
-### System Requirements
-
-The `pdf-poppler` package requires **Poppler** to be installed on your system:
-
-#### Windows
-
-1. Download Poppler for Windows from: https://github.com/oschwartz10612/poppler-windows/releases
-2. Extract the archive (e.g., to `C:\Program Files\poppler`)
-3. Add the `bin` folder to your system PATH:
-   - Right-click "This PC" → Properties → Advanced system settings
-   - Click "Environment Variables"
-   - Under "System variables", find and edit "Path"
-   - Add the path to the `bin` folder (e.g., `C:\Program Files\poppler\Library\bin`)
-4. Restart your terminal/IDE
-
-#### Linux (Ubuntu/Debian)
-
-```bash
-sudo apt-get update
-sudo apt-get install poppler-utils
-```
-
-#### macOS
-
-```bash
-brew install poppler
-```
+---
 
 ## How It Works
 
-### Original Python Implementation
+### Why not barcode scanning
 
-The Python version used:
+Barcode scanning was evaluated and rejected. USPS Ground Advantage labels use a large-format Code 128 linear barcode that every tested Node.js library (`jsqr`, `quagga2`, OpenCV `BarcodeDetector`) failed to decode reliably. The 2D code in the label corner is a DataMatrix/Aztec format with no viable Node.js support. Image-based approaches also require rendering the PDF to a bitmap first, which adds latency, DPI tuning, and temp file management.
 
-- `pdf2image` to convert PDF pages to images
-- `pyzbar` to decode barcodes from images
-- `_extract_tracking_numbers_from_text()` to extract USPS tracking numbers from barcode data
+### Why not pdf-parse text extraction
 
-### JavaScript Implementation
+`pdf-parse` concatenates all text from a page into a single string. The bug this caused: the original regex used `\s` as a separator, which includes `\n`. After extraction, a label page looks like:
 
-The JavaScript version uses equivalent libraries:
-
-- `pdf-poppler` (replaces `pdf2image`) - converts PDF to PNG images at high resolution
-- `jsqr` - decodes QR codes from images
-- `quagga` (replaces `pyzbar`) - decodes 1D barcodes (CODE128, CODE39, EAN, UPC, I2of5, CODE93)
-- `jimp` - image processing library to read PNG files
-- `extractTrackingNumbersFromText()` - existing utility to extract USPS tracking numbers
-
-### Process Flow
-
-1. User uploads a PDF with shipment labels
-2. Backend converts each PDF page to a PNG image at high resolution (scale: 2048)
-3. Each image is processed with two barcode detection methods:
-   - **jsQR** for QR codes
-   - **Quagga** for 1D barcodes (CODE128, CODE39, EAN, UPC, I2of5, CODE93)
-4. Barcode data is passed through the tracking number extraction utility
-5. Valid 22-digit USPS tracking numbers (starting with 92-95) are extracted
-6. Duplicate barcodes per page are removed using a Set
-7. Results are returned with page numbers for reference
-
-## API Response Format
-
-### Before (Text Extraction)
-
-```json
-{
-  "trackingNumbers": ["9205590164917312345678", "9205590164917387654321"]
-}
+```
+9300 1110 3880 1217 0346 20\n
+YXGYL0000201051266\n
+9300 1110 3880 1217 0346 37\n
 ```
 
-### After (Barcode Extraction)
+The regex consumed across the newline, merging a tracking number with the reference ID on the next line into a 35-digit string that failed the `length === 22` check. The first number happened to match before the merge, so it returned — all subsequent ones were silently dropped.
 
-```json
-{
-  "barcodes": [
-    { "page": 1, "barcode": "9205590164917312345678" },
-    { "page": 2, "barcode": "9205590164917387654321" }
-  ],
-  "count": 2
-}
+### The actual fix: pdfjs-dist structured text
+
+`pdfjs-dist` exposes each PDF text object as a separate `item.str`. USPS labels generated via the USPS API store the tracking number as one text object, so `"9300 1110 3880 1217 0346 20"` arrives as a single complete string — never merged with anything. Stripping non-digits gives exactly 22 digits. One `Set` deduplicates across all pages.
+
+```
+PDF text objects per page (pdfjs-dist):
+  "USPS GROUND ADVANTAGE"  ← one item
+  "9300 1110 3880 1217 0346 20"  ← one item  ✓ 22 digits after strip
+  "YXGYL0000201051266"  ← separate item, ignored
 ```
 
-## Testing
+---
 
-1. **Install dependencies**:
+## Dependencies
 
-   ```bash
-   cd server
-   npm install
-   ```
+`pdfjs-dist` is already installed. No new packages required.
 
-2. **Verify Poppler installation**:
+`pdf-parse-fork` is no longer needed in the `/process-pdf` route and can be removed from that import.
 
-   ```bash
-   pdftoppm -v
-   ```
+---
 
-   Should display version information if installed correctly.
+## Changes
 
-3. **Start the server**:
+### `server/utils/tracking.js`
 
-   ```bash
-   npm run dev
-   ```
+Replaced the regex-based `extractTrackingNumbersFromText` with a new async `extractTrackingNumbersFromPDF(buffer)` that uses `pdfjs-dist` internally.
 
-4. **Test the feature**:
-   - Navigate to Outbound Processing → Outbound Load (PDF) or Outbound Consolidated (PDF)
-   - Upload a PDF with USPS shipping labels containing barcodes
-   - Verify that tracking numbers are extracted correctly
+The old `extractTrackingNumbersFromText(text)` is kept as a synchronous fallback for any callers that only have a plain text string, with the cross-line merging bug fixed.
+
+### `server/routes/outbound.js`
+
+Two changes in the `/process-pdf` route:
+
+```diff
+- const pdfParse = require("pdf-parse-fork");
+- const { extractTrackingNumbersFromText } = require("../utils/tracking");
++ const { extractTrackingNumbersFromPDF } = require("../utils/tracking");
+
+  router.post("/process-pdf", upload.single("pdf"), async (req, res) => {
+-   const data = await pdfParse(req.file.buffer);
+-   const trackingNumbers = extractTrackingNumbersFromText(data.text);
++   const trackingNumbers = await extractTrackingNumbersFromPDF(req.file.buffer);
+  });
+```
+
+Response shape is unchanged: `{ trackingNumbers: ["9300111038801217034620", ...] }`
+
+---
+
+## API
+
+### `extractTrackingNumbersFromPDF(pdfBuffer)`
+
+```js
+const { extractTrackingNumbersFromPDF } = require("../utils/tracking");
+
+const trackingNumbers = await extractTrackingNumbersFromPDF(req.file.buffer);
+// ["9300111038801217034620", "9300111038801217034637", "9300111038801217034644"]
+```
+
+Reads every page of the PDF. Each text object is stripped to digits and checked for a valid USPS prefix (`92`–`95`) and length (22). Duplicates across pages are collapsed to one entry.
+
+### `isValidUSPSTracking(number)`
+
+```js
+isValidUSPSTracking("9300 1110 3880 1217 0346 20"); // true  (spaced)
+isValidUSPSTracking("9300111038801217034620"); // true  (compact)
+isValidUSPSTracking("1234567890123456789012"); // false (wrong prefix)
+```
+
+Returns `true` if the input, after stripping non-digits, is exactly 22 digits starting with `92`, `93`, `94`, or `95`.
+
+---
 
 ## Troubleshooting
 
-### "Barcode scanning unavailable" error
+**Returns empty array**
 
-- Ensure all npm packages are installed: `npm install pdf-poppler jsqr jimp multer quagga`
-- Check that Poppler is installed and in your system PATH
-- Restart the server after installing dependencies
+The PDF may be image-only (a scan or a screenshot saved as PDF). `pdfjs-dist` reads the text layer — if there is no text layer, there is nothing to extract. Confirm by opening the PDF and trying to select text. If text is not selectable, the file needs OCR before it can be processed.
 
-### "Error extracting barcodes" or no barcodes found
+**`DOMMatrix is not defined` error**
 
-- Verify the PDF contains actual barcode images (not just text)
-- Ensure barcodes are clear and high-resolution
-- Check that barcodes are 1D barcodes (CODE128, CODE39, EAN, UPC, I2of5, CODE93) or QR codes
-- The system now uses high-resolution conversion (scale: 2048) for better detection
-- Check server console logs for detailed per-page barcode detection results
-- Try with a different PDF or test with a known working barcode image
+`pdfjs-dist` needs browser globals polyfilled in Node. `tracking.js` handles this automatically by importing from `pdfjs-dist`'s own bundled `@napi-rs/canvas` before loading pdfjs. If you see this error, verify `pdfjs-dist` is installed at version 4.x or later and that `node_modules/pdfjs-dist/node_modules/@napi-rs/canvas` exists.
 
-### Poppler not found
+**New prefix not recognized**
 
-- Windows: Verify the `bin` folder is in your PATH and restart your terminal
-- Linux/Mac: Run the installation command again and verify with `which pdftoppm`
-
-## Performance Notes
-
-- PDF to image conversion can be resource-intensive for large PDFs
-- Temporary files are created and cleaned up automatically
-- Processing time depends on PDF size and number of pages
-- Consider implementing rate limiting for production use
-
-## Future Enhancements
-
-- Support for additional barcode formats (UPC, EAN, etc.)
-- Parallel processing for multi-page PDFs
-- Caching of processed PDFs
-- Progress indicators for large file uploads
-- Batch processing optimization
+All current USPS service prefixes (`92`–`95`) are supported. If USPS introduces a new prefix, add it to `VALID_PREFIXES` at the top of `tracking.js`.
