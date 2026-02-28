@@ -27,7 +27,9 @@ const OutboundPage = () => {
 
   // Batch/PDF Load State
   const [batchLoc, setBatchLoc] = useState("");
+  const [skuSearch, setSkuSearch] = useState("");
   const [batchSku, setBatchSku] = useState("");
+  const [showSkuList, setShowSkuList] = useState(false);
   const [batchQtyPerLabel, setBatchQtyPerLabel] = useState(1);
   const [pdfFile, setPdfFile] = useState(null);
   const [isConsolidated, setIsConsolidated] = useState(false);
@@ -35,10 +37,38 @@ const OutboundPage = () => {
   const [isDragging, setIsDragging] = useState(false);
 
   const scannerRef = useRef(null);
+  const skuSearchRef = useRef(null);
+  const skuListRef = useRef(null);
 
   useEffect(() => {
     fetchLocations();
     fetchSkus();
+  }, []);
+
+  // Click outside listener for SKU selection
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (
+        skuSearchRef.current &&
+        !skuSearchRef.current.contains(e.target) &&
+        skuListRef.current &&
+        !skuListRef.current.contains(e.target)
+      ) {
+        setShowSkuList(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      setShowSkuList(false);
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("blur", handleWindowBlur);
+    };
   }, []);
 
   useEffect(() => {
@@ -103,7 +133,9 @@ const OutboundPage = () => {
     setMessage({ type: "", text: "" });
     // setCurrentLoc(""); // Keep default if active
     // setBatchLoc("");
+    setSkuSearch("");
     setBatchSku("");
+    setShowSkuList(false);
     setBatchQtyPerLabel(1);
     setPdfFile(null);
     setActiveTab(tab);
@@ -404,19 +436,136 @@ const OutboundPage = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Select SKU
                         </label>
-                        <select
-                          value={batchSku}
-                          onChange={(e) => setBatchSku(e.target.value)}
-                          className="w-full border rounded px-3 py-2"
-                          disabled={confirmed}
-                        >
-                          <option value="">Select SKU</option>
-                          {skus.map((s) => (
-                            <option key={s.sku} value={s.sku}>
-                              {s.sku} - {s.product_name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="relative">
+                          <input
+                            ref={skuSearchRef}
+                            type="text"
+                            placeholder="Search SKU or Name..."
+                            value={skuSearch}
+                            onChange={(e) => {
+                              setSkuSearch(e.target.value);
+                              setShowSkuList(true);
+                            }}
+                            onClick={() => setShowSkuList(true)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                const filtered = skus.filter((s) => {
+                                  const search = skuSearch.toLowerCase();
+                                  return (
+                                    (s.sku || "")
+                                      .toLowerCase()
+                                      .includes(search) ||
+                                    (s.product_name || "")
+                                      .toLowerCase()
+                                      .includes(search)
+                                  );
+                                });
+                                if (filtered.length > 0) {
+                                  setBatchSku(filtered[0].sku);
+                                  setShowSkuList(false);
+                                  setSkuSearch("");
+                                }
+                              }
+                            }}
+                            className="w-full border rounded px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                            disabled={confirmed}
+                          />
+                          {showSkuList && (
+                            <div
+                              ref={skuListRef}
+                              className="absolute z-10 mt-1 w-full bg-white border rounded shadow-lg max-h-48 overflow-y-auto p-1 text-xs space-y-0.5"
+                            >
+                              <div className="flex justify-between items-center p-1 border-b mb-1">
+                                <span className="text-gray-400 italic">
+                                  Click to select or Enter to pick first
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowSkuList(false);
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 font-bold"
+                                >
+                                  &times;
+                                </button>
+                              </div>
+                              {skus
+                                .filter((s) => {
+                                  const search = skuSearch.toLowerCase();
+                                  return (
+                                    (s.sku || "")
+                                      .toLowerCase()
+                                      .includes(search) ||
+                                    (s.product_name || "")
+                                      .toLowerCase()
+                                      .includes(search)
+                                  );
+                                })
+                                .map((s) => (
+                                  <div
+                                    key={s.sku}
+                                    onClick={() => {
+                                      setBatchSku(s.sku);
+                                      setShowSkuList(false);
+                                      setSkuSearch("");
+                                    }}
+                                    className={`flex items-center space-x-2 p-1.5 rounded cursor-pointer transition-colors ${
+                                      batchSku === s.sku
+                                        ? "bg-indigo-100 border border-indigo-300"
+                                        : "hover:bg-gray-100"
+                                    }`}
+                                  >
+                                    <span className="font-bold text-gray-900">
+                                      {s.sku}
+                                    </span>
+                                    <span className="text-gray-500 truncate">
+                                      - {s.product_name}
+                                    </span>
+                                  </div>
+                                ))}
+                              {skus.filter((s) => {
+                                const search = skuSearch.toLowerCase();
+                                return (
+                                  (s.sku || "")
+                                    .toLowerCase()
+                                    .includes(search) ||
+                                  (s.product_name || "")
+                                    .toLowerCase()
+                                    .includes(search)
+                                );
+                              }).length === 0 && (
+                                <div className="p-2 text-gray-400 italic text-center">
+                                  No matching SKUs found
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        {batchSku && (
+                          <div className="mt-2 text-xs font-medium text-indigo-600 bg-indigo-50 p-2 rounded border border-indigo-100 flex justify-between items-start gap-2">
+                            <div className="flex-1">
+                              <p className="font-bold mb-0.5">
+                                Selected: {batchSku}
+                              </p>
+                              <p className="text-gray-600 italic leading-tight">
+                                {
+                                  skus.find((s) => s.sku === batchSku)
+                                    ?.product_name
+                                }
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setBatchSku("")}
+                              className="text-red-500 hover:text-red-700 font-bold shrink-0"
+                              disabled={confirmed}
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {isConsolidated && (
