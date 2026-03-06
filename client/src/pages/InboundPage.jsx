@@ -43,6 +43,7 @@ const InboundPage = () => {
 
   // Manual Entry State
   const [manualSku, setManualSku] = useState("");
+  const [manualSkuSearch, setManualSkuSearch] = useState("");
   const [manualQty, setManualQty] = useState(1);
   const [manualLoc, setManualLoc] = useState("");
 
@@ -240,7 +241,10 @@ const InboundPage = () => {
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!manualSku || !manualLoc || manualQty < 1) {
-      setMessage({ type: "error", text: "Please select SKU and Location" });
+      setMessage({
+        type: "error",
+        text: "Please search and select a SKU, then choose a location",
+      });
       return;
     }
     try {
@@ -253,6 +257,7 @@ const InboundPage = () => {
         text: `Inbound Successful: SKU ${manualSku}, QTY ${manualQty}, LOC ${manualLoc} (Movement Num: ${res.data.message.split(": ")[1] || ""})`,
       });
       setManualSku("");
+      setManualSkuSearch("");
       setManualQty(1);
       // setManualLoc(""); // Keep location
       fetchTransactions();
@@ -271,6 +276,25 @@ const InboundPage = () => {
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .slice(indexOfFirstItem, indexOfLastItem);
   const totalPages = Math.ceil(transactions.length / itemsPerPage);
+  const normalizedManualSearch = manualSkuSearch.trim().toUpperCase();
+  const filteredManualSkus = normalizedManualSearch
+    ? skus
+        .filter((sku) => sku.includes(normalizedManualSearch))
+        .slice(0, 20)
+    : skus.slice(0, 20);
+
+  const handleManualSkuSearchChange = (e) => {
+    const nextValue = e.target.value.toUpperCase();
+    setManualSkuSearch(nextValue);
+    if (nextValue !== manualSku) {
+      setManualSku("");
+    }
+  };
+
+  const handleManualSkuSelect = (sku) => {
+    setManualSku(sku);
+    setManualSkuSearch(sku);
+  };
 
   return (
     <div>
@@ -535,23 +559,49 @@ const InboundPage = () => {
           <h2 className="text-xl font-semibold mb-6">Manual Inbound Entry</h2>
           <form onSubmit={handleManualSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <div>
+              <div className="col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  SKU
+                  SKU Search
                 </label>
-                <select
-                  value={manualSku}
-                  onChange={(e) => setManualSku(e.target.value)}
+                <input
+                  type="text"
+                  value={manualSkuSearch}
+                  onChange={handleManualSkuSearchChange}
+                  placeholder="Type SKU to search"
                   className="w-full border rounded px-3 py-2"
-                  required
-                >
-                  <option value="">Select SKU</option>
-                  {skus.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
+                  autoComplete="off"
+                />
+                <div className="mt-2 max-h-48 overflow-y-auto rounded border">
+                  {filteredManualSkus.length > 0 ? (
+                    filteredManualSkus.map((sku) => (
+                      <button
+                        key={sku}
+                        type="button"
+                        onClick={() => handleManualSkuSelect(sku)}
+                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                          manualSku === sku
+                            ? "bg-indigo-50 text-indigo-700"
+                            : "text-gray-700"
+                        }`}
+                      >
+                        <span className="font-medium">{sku}</span>
+                        <span className="ml-3 text-xs text-gray-500">
+                          {skuMap[sku] || ""}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-sm text-gray-500">
+                      No matching SKU found.
+                    </div>
+                  )}
+                </div>
+                <p className="mt-2 text-sm text-gray-600">
+                  Selected SKU:{" "}
+                  <span className="font-medium text-gray-900">
+                    {manualSku || "None"}
+                  </span>
+                </p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
