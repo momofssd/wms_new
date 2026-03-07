@@ -19,6 +19,7 @@ const MasterDataPage = () => {
   const [message, setMessage] = useState({ type: "", text: "" });
   const [editedMaterials, setEditedMaterials] = useState({});
   const [editedLocations, setEditedLocations] = useState({});
+  const [showInactiveMaterials, setShowInactiveMaterials] = useState(false);
 
   const isAdmin = user?.role?.toLowerCase() === "admin";
   const isCustomer = user?.role?.toLowerCase() === "customer";
@@ -144,6 +145,10 @@ const MasterDataPage = () => {
     }
   };
 
+  const visibleMaterials = showInactiveMaterials
+    ? materials
+    : materials.filter((m) => m.active);
+
   return (
     <div>
       <h1 className="text-2xl font-bold mb-6">Master Data</h1>
@@ -229,6 +234,18 @@ const MasterDataPage = () => {
             </div>
           )}
 
+          <div className="mb-4 flex justify-end">
+            <label className="flex items-center space-x-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={showInactiveMaterials}
+                onChange={(e) => setShowInactiveMaterials(e.target.checked)}
+                className="rounded text-indigo-600"
+              />
+              <span>Show inactive SKUs</span>
+            </label>
+          </div>
+
           <div className="bg-white shadow border rounded overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -248,7 +265,7 @@ const MasterDataPage = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {materials.map((m) => (
+                {visibleMaterials.map((m) => (
                   <tr key={m.sku}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {m.sku}
