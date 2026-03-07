@@ -555,11 +555,11 @@ const InboundPage = () => {
       )}
 
       {activeTab === "manual" && (
-        <div className="max-w-2xl bg-white p-6 rounded shadow border">
+        <div className="max-w-4xl bg-white p-6 rounded shadow border">
           <h2 className="text-xl font-semibold mb-6">Manual Inbound Entry</h2>
           <form onSubmit={handleManualSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] lg:items-start">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   SKU Search
                 </label>
@@ -603,43 +603,46 @@ const InboundPage = () => {
                   </span>
                 </p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Quantity
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  value={manualQty}
-                  onChange={(e) => setManualQty(parseInt(e.target.value))}
-                  className="w-full border rounded px-3 py-2"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Location
-                </label>
-                <select
-                  value={manualLoc}
-                  onChange={(e) => setManualLoc(e.target.value)}
-                  className="w-full border rounded px-3 py-2"
-                  required
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Quantity
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={manualQty}
+                    onChange={(e) => setManualQty(parseInt(e.target.value))}
+                    className="w-full border rounded px-3 py-2"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Location
+                  </label>
+                  <select
+                    value={manualLoc}
+                    onChange={(e) => setManualLoc(e.target.value)}
+                    className="w-full border rounded px-3 py-2"
+                    required
+                  >
+                    <option value="">Select Location</option>
+                    {locations.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-indigo-600 text-white rounded py-2 font-medium hover:bg-indigo-700 lg:mt-6"
                 >
-                  <option value="">Select Location</option>
-                  {locations.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
+                  Submit Stock Entry
+                </button>
               </div>
             </div>
-            <button
-              type="submit"
-              className="w-full bg-indigo-600 text-white rounded py-2 font-medium hover:bg-indigo-700"
-            >
-              Submit Stock Entry
-            </button>
           </form>
         </div>
       )}
