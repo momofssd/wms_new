@@ -18,7 +18,7 @@ const MasterDataPage = () => {
     active: true,
   });
   const [newPriceCondition, setNewPriceCondition] = useState({
-    sku: "",
+    skus: [],
     service: "FBA",
     from_date: "",
     to_date: "",
@@ -27,7 +27,9 @@ const MasterDataPage = () => {
   const [message, setMessage] = useState({ type: "", text: "" });
   const [editedMaterials, setEditedMaterials] = useState({});
   const [editedLocations, setEditedLocations] = useState({});
+  const [editedPriceConditions, setEditedPriceConditions] = useState({});
   const [showInactiveMaterials, setShowInactiveMaterials] = useState(false);
+  const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null });
 
   const isAdmin = user?.role?.toLowerCase() === "admin";
   const isCustomer = user?.role?.toLowerCase() === "customer";
@@ -99,11 +101,11 @@ const MasterDataPage = () => {
 
   const handleCreatePriceCondition = async (e) => {
     if (e) e.preventDefault();
-    const { sku, service, from_date, to_date, price } = newPriceCondition;
-    if (!sku || !service || !from_date || !to_date || !price) {
+    const { skus, service, from_date, to_date, price } = newPriceCondition;
+    if (!skus.length || !service || !from_date || !to_date || !price) {
       setMessage({
         type: "error",
-        text: "All price condition fields are required",
+        text: "All price condition fields are required, including at least one SKU",
       });
       return;
     }
@@ -114,7 +116,7 @@ const MasterDataPage = () => {
       );
       setMessage({ type: "success", text: res.data.message });
       setNewPriceCondition({
-        sku: "",
+        skus: [],
         service: "FBA",
         from_date: "",
         to_date: "",
@@ -126,17 +128,71 @@ const MasterDataPage = () => {
     }
   };
 
-  const handleDeletePriceCondition = async (id) => {
-    if (
-      !window.confirm("Are you sure you want to delete this price condition?")
-    )
-      return;
+  const handleSkuToggle = (sku) => {
+    const currentSkus = [...newPriceCondition.skus];
+    const index = currentSkus.indexOf(sku);
+    if (index > -1) {
+      currentSkus.splice(index, 1);
+    } else {
+      currentSkus.push(sku);
+    }
+    setNewPriceCondition({ ...newPriceCondition, skus: currentSkus });
+  };
+
+  const handleSelectAllSkus = (checked) => {
+    if (checked) {
+      const allActiveSkus = materials
+        .filter((m) => m.active === true)
+        .map((m) => m.sku);
+      setNewPriceCondition({ ...newPriceCondition, skus: allActiveSkus });
+    } else {
+      setNewPriceCondition({ ...newPriceCondition, skus: [] });
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteModal.id) return;
     try {
-      await api.delete(`/master-data/price-conditions/${id}`);
+      await api.delete(`/master-data/price-conditions/${deleteModal.id}`);
       setMessage({ type: "success", text: "Price condition deleted" });
+      setDeleteModal({ isOpen: false, id: null });
       fetchPriceConditions();
     } catch (err) {
       setMessage({ type: "error", text: "Error deleting price condition" });
+      setDeleteModal({ isOpen: false, id: null });
+    }
+  };
+
+  const handleDeletePriceCondition = (id) => {
+    setDeleteModal({ isOpen: true, id });
+  };
+
+  const handlePriceChange = (id, newPrice) => {
+    setEditedPriceConditions({
+      ...editedPriceConditions,
+      [id]: newPrice,
+    });
+    setPriceConditions(
+      priceConditions.map((pc) =>
+        pc._id === id ? { ...pc, price: parseFloat(newPrice) } : pc,
+      ),
+    );
+  };
+
+  const savePriceChanges = async (id) => {
+    const newPrice = editedPriceConditions[id];
+    if (newPrice === undefined) return;
+    try {
+      await api.put(`/master-data/price-conditions/${id}`, {
+        price: newPrice,
+      });
+      setMessage({ type: "success", text: "Price updated successfully" });
+      const newEdited = { ...editedPriceConditions };
+      delete newEdited[id];
+      setEditedPriceConditions(newEdited);
+      fetchPriceConditions();
+    } catch (err) {
+      setMessage({ type: "error", text: "Error updating price" });
     }
   };
 
@@ -180,6 +236,7 @@ const MasterDataPage = () => {
       });
       setEditedMaterials({});
       fetchMaterials();
+      fetchPriceConditions(); // Refresh price conditions as active status might have changed
     } catch (err) {
       setMessage({ type: "error", text: "Error saving material changes" });
     }
@@ -476,105 +533,136 @@ const MasterDataPage = () => {
           </p>
 
           {!isCustomer && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8 bg-gray-50 p-4 rounded border items-end">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8 bg-gray-50 p-6 rounded-lg border items-start shadow-sm">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  SKU
-                </label>
-                <select
-                  value={newPriceCondition.sku}
-                  onChange={(e) =>
-                    setNewPriceCondition({
-                      ...newPriceCondition,
-                      sku: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-3 py-2 text-sm"
-                >
-                  <option value="">Select SKU</option>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-semibold text-gray-800">
+                    Select SKUs ({newPriceCondition.skus.length} selected)
+                  </label>
+                  <label className="flex items-center space-x-2 text-xs font-bold text-indigo-600 cursor-pointer hover:text-indigo-800">
+                    <input
+                      type="checkbox"
+                      className="rounded text-indigo-600 focus:ring-indigo-500"
+                      onChange={(e) => handleSelectAllSkus(e.target.checked)}
+                      checked={
+                        newPriceCondition.skus.length > 0 &&
+                        newPriceCondition.skus.length ===
+                          materials.filter((m) => m.active === true).length
+                      }
+                    />
+                    <span>SELECT ALL</span>
+                  </label>
+                </div>
+                <div className="border rounded-md px-3 py-2 h-64 overflow-y-auto bg-white shadow-inner">
                   {materials
-                    .filter((m) => m.active)
+                    .filter((m) => m.active === true)
                     .map((m) => (
-                      <option key={m.sku} value={m.sku}>
-                        {m.sku}
-                      </option>
+                      <label
+                        key={m.sku}
+                        className="flex items-center space-x-3 py-2 border-b last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={newPriceCondition.skus.includes(m.sku)}
+                          onChange={() => handleSkuToggle(m.sku)}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          <span className="font-mono font-bold mr-2">
+                            {m.sku}
+                          </span>
+                          <span className="text-gray-500">
+                            - {m.product_name}
+                          </span>
+                        </span>
+                      </label>
                     ))}
-                </select>
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Service
-                </label>
-                <select
-                  value={newPriceCondition.service}
-                  onChange={(e) =>
-                    setNewPriceCondition({
-                      ...newPriceCondition,
-                      service: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-3 py-2 text-sm"
-                >
-                  <option value="FBA">FBA</option>
-                  <option value="FBM">FBM</option>
-                </select>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Service
+                  </label>
+                  <select
+                    value={newPriceCondition.service}
+                    onChange={(e) =>
+                      setNewPriceCondition({
+                        ...newPriceCondition,
+                        service: e.target.value,
+                      })
+                    }
+                    className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  >
+                    <option value="FBA">FBA</option>
+                    <option value="FBM">FBM</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newPriceCondition.from_date}
+                    onChange={(e) =>
+                      setNewPriceCondition({
+                        ...newPriceCondition,
+                        from_date: e.target.value,
+                      })
+                    }
+                    className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={newPriceCondition.to_date}
+                    onChange={(e) =>
+                      setNewPriceCondition({
+                        ...newPriceCondition,
+                        to_date: e.target.value,
+                      })
+                    }
+                    className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">
+                    Price
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-gray-400">
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={newPriceCondition.price}
+                      onChange={(e) =>
+                        setNewPriceCondition({
+                          ...newPriceCondition,
+                          price: e.target.value,
+                        })
+                      }
+                      className="w-full border rounded pl-7 pr-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                    />
+                  </div>
+                </div>
+                <div className="sm:col-span-2 mt-2">
+                  <button
+                    onClick={handleCreatePriceCondition}
+                    className="w-full bg-indigo-600 text-white rounded-md px-4 py-3 text-sm font-bold uppercase tracking-widest hover:bg-indigo-700 shadow-md transition-all active:scale-95"
+                  >
+                    Create Conditions
+                  </button>
+                </div>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  From Date
-                </label>
-                <input
-                  type="date"
-                  value={newPriceCondition.from_date}
-                  onChange={(e) =>
-                    setNewPriceCondition({
-                      ...newPriceCondition,
-                      from_date: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  To Date
-                </label>
-                <input
-                  type="date"
-                  value={newPriceCondition.to_date}
-                  onChange={(e) =>
-                    setNewPriceCondition({
-                      ...newPriceCondition,
-                      to_date: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Price
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={newPriceCondition.price}
-                  onChange={(e) =>
-                    setNewPriceCondition({
-                      ...newPriceCondition,
-                      price: e.target.value,
-                    })
-                  }
-                  className="w-full border rounded px-3 py-2 text-sm"
-                />
-              </div>
-              <button
-                onClick={handleCreatePriceCondition}
-                className="bg-indigo-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-indigo-700 h-10"
-              >
-                Create
-              </button>
             </div>
           )}
 
@@ -584,6 +672,9 @@ const MasterDataPage = () => {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     SKU
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Product Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Service
@@ -596,6 +687,9 @@ const MasterDataPage = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Price
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Active
                   </th>
                   {!isCustomer && (
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -611,6 +705,9 @@ const MasterDataPage = () => {
                       {pc.sku}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {pc.product_name}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {pc.service}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -620,7 +717,40 @@ const MasterDataPage = () => {
                       {new Date(pc.to_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${pc.price?.toFixed(2)}
+                      {isAdmin ? (
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={
+                              editedPriceConditions[pc._id] !== undefined
+                                ? editedPriceConditions[pc._id]
+                                : pc.price
+                            }
+                            onChange={(e) =>
+                              handlePriceChange(pc._id, e.target.value)
+                            }
+                            className="w-20 border rounded px-2 py-1 text-sm"
+                          />
+                          {editedPriceConditions[pc._id] !== undefined && (
+                            <button
+                              onClick={() => savePriceChanges(pc._id)}
+                              className="text-indigo-600 hover:text-indigo-900 text-xs font-bold"
+                            >
+                              Save
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        `$${pc.price?.toFixed(2)}`
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-semibold ${pc.active ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+                      >
+                        {pc.active ? "Yes" : "No"}
+                      </span>
                     </td>
                     {!isCustomer && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -636,6 +766,37 @@ const MasterDataPage = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Popup */}
+      {deleteModal.isOpen && (
+        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
+          <div className="bg-white rounded-lg shadow-2xl border-2 border-red-100 max-w-sm w-full p-6 ring-1 ring-black ring-opacity-5">
+            <div className="flex items-center space-x-3 mb-4 text-red-600 font-bold">
+              <span className="text-xl">⚠️</span>
+              <h3 className="text-lg uppercase tracking-tight">
+                Confirm Deletion
+              </h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to delete this price condition?
+            </p>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setDeleteModal({ isOpen: false, id: null })}
+                className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-800 transition-colors uppercase tracking-wider border rounded-md"
+              >
+                No
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-6 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-md shadow-md hover:shadow-lg transition-all active:scale-95 uppercase tracking-wider"
+              >
+                Yes, Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

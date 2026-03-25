@@ -129,104 +129,155 @@ router.get("/price-conditions", async (req, res) => {
   try {
     const db = mongoose.connection.db;
     const priceCol = db.collection("price_under");
+
+    // Joining price_under with MM collection using an aggregation pipeline
+    // to dynamically fetch the latest 'active' status.
     const conditions = await priceCol
-      .find({})
-      .sort({ sku: 1, service: 1, from_date: 1 })
+      .aggregate([
+        {
+          $lookup: {
+            from: "MM",
+            localField: "sku",
+            foreignField: "sku",
+            as: "material_info",
+          },
+        },
+        {
+          $addFields: {
+            active: {
+              $ifNull: [{ $arrayElemAt: ["$material_info.active", 0] }, false],
+            },
+            // product_name is stored in the document, but fallback to joined MM if missing for old records
+            product_name: {
+              $ifNull: [
+                "$product_name",
+                { $arrayElemAt: ["$material_info.product_name", 0] },
+                "N/A",
+              ],
+            },
+          },
+        },
+        { $project: { material_info: 0 } },
+        { $sort: { sku: 1, service: 1, from_date: 1 } },
+      ])
       .toArray();
+
     res.json(conditions);
   } catch (err) {
+    console.error("Error fetching price conditions:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 router.post("/price-conditions", async (req, res) => {
-  const { sku, service, from_date, to_date, price } = req.body;
+  const { skus, service, from_date, to_date, price } = req.body; // Expects skus as an array
   try {
     const db = mongoose.connection.db;
     const priceCol = db.collection("price_under");
-    const sku_n = sku.trim().toUpperCase();
+    const mmCol = db.collection("MM");
+
     const service_n = service.trim().toUpperCase(); // FBA or FBM
     const fDate = new Date(from_date);
     const tDate = new Date(to_date);
     const p = parseFloat(price);
     const now = new Date();
 
-    if (isNaN(fDate.getTime()) || isNaN(tDate.getTime()) || isNaN(p)) {
+    if (
+      !skus ||
+      !Array.isArray(skus) ||
+      skus.length === 0 ||
+      !service_n ||
+      isNaN(fDate.getTime()) ||
+      isNaN(tDate.getTime()) ||
+      isNaN(p)
+    ) {
       return res.status(400).json({ message: "Invalid input data" });
     }
 
-    // Logic for overlapping date range:
-    // "if the user enter date range overlap... the 1st valid price condition should be rewrited the end date to 02/27/2026"
-    // Example:
-    // 1st: 2/31/2025 (likely 2/28 or 3/1) to 03/23/2026 @ $1.50
-    // 2nd (new): 02/28/2026 to 03/24/2026 @ $2.00
-    // Result: 1st end date becomes 02/27/2026.
+    const results = [];
 
-    // We look for existing conditions for same SKU and Service that overlap with the new from_date.
-    // Specifically, if an existing condition's range [start, end] contains the new start date,
-    // or if the existing condition starts after the new start date but before the new end date.
+    for (const sku of skus) {
+      const sku_n = sku.trim().toUpperCase();
 
-    // Based on the requirement: "the 1st valid price condition should be rewrited the end date to (new from_date - 1 day)"
+      // Fetch material info to explicitly store product_name
+      const material = await mmCol.findOne({ sku: sku_n });
+      const isActive = material ? !!material.active : false;
+      const productName = material ? material.product_name : "N/A";
 
-    // Find conditions that overlap:
-    // Existing condition (E) overlaps with New condition (N) if:
-    // E.from_date <= N.to_date AND E.to_date >= N.from_date
+      // Logic for handling overlapping date ranges within price_under
+      const overlapping = await priceCol
+        .find({
+          sku: sku_n,
+          service: service_n,
+          from_date: { $lte: tDate },
+          to_date: { $gte: fDate },
+        })
+        .toArray();
 
-    const overlapping = await priceCol
-      .find({
-        sku: sku_n,
-        service: service_n,
-        from_date: { $lte: tDate },
-        to_date: { $gte: fDate },
-      })
-      .toArray();
+      for (const doc of overlapping) {
+        const eFrom = new Date(doc.from_date);
+        const eTo = new Date(doc.to_date);
 
-    for (const doc of overlapping) {
-      const eFrom = new Date(doc.from_date);
-      const eTo = new Date(doc.to_date);
-
-      if (eFrom < fDate) {
-        // Case where existing condition starts before new condition.
-        // We truncate the existing one's end date.
-        const newEndDateForExisting = new Date(fDate);
-        newEndDateForExisting.setDate(newEndDateForExisting.getDate() - 1);
-
-        await priceCol.updateOne(
-          { _id: doc._id },
-          { $set: { to_date: newEndDateForExisting, updated_at: now } },
-        );
-      } else if (eFrom >= fDate && eTo <= tDate) {
-        // Case where existing condition is completely covered by new condition.
-        // Option A: Delete it. Option B: Truncate it.
-        // The requirement says "rewrite the end date", but if the whole range is covered,
-        // maybe it should be removed or start date moved.
-        // Given the specific example, let's stick to the spirit of "new one takes precedence".
-        await priceCol.deleteOne({ _id: doc._id });
-      } else if (eFrom >= fDate && eFrom <= tDate && eTo > tDate) {
-        // Case where existing condition starts during new condition but ends after.
-        // Truncate the existing one's start date to be after new condition's end date.
-        const newStartDateForExisting = new Date(tDate);
-        newStartDateForExisting.setDate(newStartDateForExisting.getDate() + 1);
-        await priceCol.updateOne(
-          { _id: doc._id },
-          { $set: { from_date: newStartDateForExisting, updated_at: now } },
-        );
+        if (eFrom < fDate) {
+          const newEndDateForExisting = new Date(fDate);
+          newEndDateForExisting.setDate(newEndDateForExisting.getDate() - 1);
+          await priceCol.updateOne(
+            { _id: doc._id },
+            { $set: { to_date: newEndDateForExisting, updated_at: now } },
+          );
+        } else if (eFrom >= fDate && eTo <= tDate) {
+          await priceCol.deleteOne({ _id: doc._id });
+        } else if (eFrom >= fDate && eFrom <= tDate && eTo > tDate) {
+          const newStartDateForExisting = new Date(tDate);
+          newStartDateForExisting.setDate(
+            newStartDateForExisting.getDate() + 1,
+          );
+          await priceCol.updateOne(
+            { _id: doc._id },
+            { $set: { from_date: newStartDateForExisting, updated_at: now } },
+          );
+        }
       }
+
+      await priceCol.insertOne({
+        sku: sku_n,
+        product_name: productName,
+        service: service_n,
+        from_date: fDate,
+        to_date: tDate,
+        price: p,
+        active: isActive,
+        created_at: now,
+        updated_at: now,
+      });
+      results.push(sku_n);
     }
 
-    await priceCol.insertOne({
-      sku: sku_n,
-      service: service_n,
-      from_date: fDate,
-      to_date: tDate,
-      price: p,
-      created_at: now,
-      updated_at: now,
+    res.json({
+      success: true,
+      message: `Saved price conditions for ${results.length} SKUs`,
     });
-
-    res.json({ success: true, message: `Saved price condition for ${sku_n}` });
   } catch (err) {
-    console.error(err);
+    console.error("Error creating price conditions:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/price-conditions/:id", async (req, res) => {
+  const { price } = req.body;
+  try {
+    const db = mongoose.connection.db;
+    const priceCol = db.collection("price_under");
+    const p = parseFloat(price);
+    if (isNaN(p)) {
+      return res.status(400).json({ message: "Invalid price" });
+    }
+    await priceCol.updateOne(
+      { _id: new mongoose.Types.ObjectId(req.params.id) },
+      { $set: { price: p, updated_at: new Date() } },
+    );
+    res.json({ success: true, message: "Price updated" });
+  } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 });
