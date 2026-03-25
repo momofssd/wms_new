@@ -7,6 +7,7 @@ const MasterDataPage = () => {
   const [activeTab, setActiveTab] = useState("materials");
   const [materials, setMaterials] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [priceConditions, setPriceConditions] = useState([]);
   const [newMaterial, setNewMaterial] = useState({
     sku: "",
     product_name: "",
@@ -15,6 +16,13 @@ const MasterDataPage = () => {
   const [newLocation, setNewLocation] = useState({
     location: "",
     active: true,
+  });
+  const [newPriceCondition, setNewPriceCondition] = useState({
+    sku: "",
+    service: "FBA",
+    from_date: "",
+    to_date: "",
+    price: "",
   });
   const [message, setMessage] = useState({ type: "", text: "" });
   const [editedMaterials, setEditedMaterials] = useState({});
@@ -27,6 +35,7 @@ const MasterDataPage = () => {
   useEffect(() => {
     fetchMaterials();
     fetchLocations();
+    fetchPriceConditions();
   }, []);
 
   const fetchMaterials = async () => {
@@ -44,6 +53,15 @@ const MasterDataPage = () => {
       setLocations(res.data);
     } catch (err) {
       console.error("Error fetching locations", err);
+    }
+  };
+
+  const fetchPriceConditions = async () => {
+    try {
+      const res = await api.get("/master-data/price-conditions");
+      setPriceConditions(res.data);
+    } catch (err) {
+      console.error("Error fetching price conditions", err);
     }
   };
 
@@ -76,6 +94,49 @@ const MasterDataPage = () => {
       fetchLocations();
     } catch (err) {
       setMessage({ type: "error", text: "Error creating location" });
+    }
+  };
+
+  const handleCreatePriceCondition = async (e) => {
+    if (e) e.preventDefault();
+    const { sku, service, from_date, to_date, price } = newPriceCondition;
+    if (!sku || !service || !from_date || !to_date || !price) {
+      setMessage({
+        type: "error",
+        text: "All price condition fields are required",
+      });
+      return;
+    }
+    try {
+      const res = await api.post(
+        "/master-data/price-conditions",
+        newPriceCondition,
+      );
+      setMessage({ type: "success", text: res.data.message });
+      setNewPriceCondition({
+        sku: "",
+        service: "FBA",
+        from_date: "",
+        to_date: "",
+        price: "",
+      });
+      fetchPriceConditions();
+    } catch (err) {
+      setMessage({ type: "error", text: "Error creating price condition" });
+    }
+  };
+
+  const handleDeletePriceCondition = async (id) => {
+    if (
+      !window.confirm("Are you sure you want to delete this price condition?")
+    )
+      return;
+    try {
+      await api.delete(`/master-data/price-conditions/${id}`);
+      setMessage({ type: "success", text: "Price condition deleted" });
+      fetchPriceConditions();
+    } catch (err) {
+      setMessage({ type: "error", text: "Error deleting price condition" });
     }
   };
 
@@ -171,6 +232,15 @@ const MasterDataPage = () => {
           }}
         >
           Locations
+        </button>
+        <button
+          className={`pb-2 px-4 ${activeTab === "price-conditions" ? "border-b-2 border-indigo-600 text-indigo-600 font-semibold" : "text-gray-500"}`}
+          onClick={() => {
+            setActiveTab("price-conditions");
+            setMessage({ type: "", text: "" });
+          }}
+        >
+          Price Condition
         </button>
       </div>
 
@@ -395,6 +465,178 @@ const MasterDataPage = () => {
               Save Location Changes
             </button>
           )}
+        </div>
+      )}
+
+      {activeTab === "price-conditions" && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Price Conditions</h2>
+          <p className="text-sm text-gray-500 mb-6">
+            Maintain active SKU prices for FBA and FBM services by date range.
+          </p>
+
+          {!isCustomer && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 mb-8 bg-gray-50 p-4 rounded border items-end">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  SKU
+                </label>
+                <select
+                  value={newPriceCondition.sku}
+                  onChange={(e) =>
+                    setNewPriceCondition({
+                      ...newPriceCondition,
+                      sku: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                >
+                  <option value="">Select SKU</option>
+                  {materials
+                    .filter((m) => m.active)
+                    .map((m) => (
+                      <option key={m.sku} value={m.sku}>
+                        {m.sku}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Service
+                </label>
+                <select
+                  value={newPriceCondition.service}
+                  onChange={(e) =>
+                    setNewPriceCondition({
+                      ...newPriceCondition,
+                      service: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                >
+                  <option value="FBA">FBA</option>
+                  <option value="FBM">FBM</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  From Date
+                </label>
+                <input
+                  type="date"
+                  value={newPriceCondition.from_date}
+                  onChange={(e) =>
+                    setNewPriceCondition({
+                      ...newPriceCondition,
+                      from_date: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  To Date
+                </label>
+                <input
+                  type="date"
+                  value={newPriceCondition.to_date}
+                  onChange={(e) =>
+                    setNewPriceCondition({
+                      ...newPriceCondition,
+                      to_date: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Price
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={newPriceCondition.price}
+                  onChange={(e) =>
+                    setNewPriceCondition({
+                      ...newPriceCondition,
+                      price: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm"
+                />
+              </div>
+              <button
+                onClick={handleCreatePriceCondition}
+                className="bg-indigo-600 text-white rounded px-4 py-2 text-sm font-medium hover:bg-indigo-700 h-10"
+              >
+                Create
+              </button>
+            </div>
+          )}
+
+          <div className="bg-white shadow border rounded overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    SKU
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Service
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    From
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    To
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Price
+                  </th>
+                  {!isCustomer && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {priceConditions.map((pc) => (
+                  <tr key={pc._id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {pc.sku}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {pc.service}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(pc.from_date).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(pc.to_date).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      ${pc.price?.toFixed(2)}
+                    </td>
+                    {!isCustomer && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        <button
+                          onClick={() => handleDeletePriceCondition(pc._id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
