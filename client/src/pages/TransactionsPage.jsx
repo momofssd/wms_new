@@ -19,7 +19,8 @@ const TransactionsPage = () => {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [showFBA, setShowFBA] = useState(false);
-  const [showFulfillment, setShowFulfillment] = useState(false);
+  const [showFBM, setShowFBM] = useState(false);
+  const [priceConditions, setPriceConditions] = useState([]);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -29,6 +30,7 @@ const TransactionsPage = () => {
   const [showShipmentRecord, setShowShipmentRecord] = useState(false);
   const [showTransactionChart, setShowTransactionChart] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingCharges, setIsExportingCharges] = useState(false);
   const [shipmentPage, setShipmentPage] = useState(0);
   const [allShipmentData, setAllShipmentData] = useState([]);
 
@@ -42,7 +44,17 @@ const TransactionsPage = () => {
   useEffect(() => {
     fetchTransactions();
     fetchAllShipments();
+    fetchPriceConditions();
   }, []);
+
+  const fetchPriceConditions = async () => {
+    try {
+      const res = await api.get("/master-data/price-conditions");
+      setPriceConditions(res.data);
+    } catch (err) {
+      console.error("Error fetching price conditions", err);
+    }
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -144,7 +156,7 @@ const TransactionsPage = () => {
       });
     }
 
-    if (showFulfillment) {
+    if (showFBM) {
       filtered = filtered.filter((t) => {
         const isOutbound = String(t.type || "").toLowerCase() === "outbound";
         const noToLoc =
@@ -167,7 +179,7 @@ const TransactionsPage = () => {
     startDate,
     endDate,
     showFBA,
-    showFulfillment,
+    showFBM,
   ]);
 
   // Derived shipment data based on current transaction filters
@@ -180,7 +192,7 @@ const TransactionsPage = () => {
       locFilter.length > 0 ||
       typeFilter.length !== typeOptions.length ||
       showFBA ||
-      showFulfillment ||
+      showFBM ||
       (startDate && endDate);
 
     if (!isFiltered) return allShipmentData;
@@ -200,7 +212,7 @@ const TransactionsPage = () => {
     typeFilter,
     typeOptions,
     showFBA,
-    showFulfillment,
+    showFBM,
     startDate,
     endDate,
   ]);
@@ -270,26 +282,9 @@ const TransactionsPage = () => {
     }
   };
 
-  const calculateCharges = () => {
-    let fulfillmentQty = 0;
-    let fbaQty = 0;
-
-    // Use filteredTransactions for Fulfillment Charge
-    filteredTransactions.forEach((t) => {
-      const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
-
-      // Fulfillment Charge ($2.00)
-      if (
-        t.type === "outbound" &&
-        (!t.location_to || t.location_to === "None")
-      ) {
-        fulfillmentQty += qty;
-      }
-    });
-
-    // Use specific FBA logic for FBA Charge
+  const getFbaTransactions = () => {
     const amazon = "AMAZON";
-    const fbaTransactions = transactions.filter((t) => {
+    return transactions.filter((t) => {
       const loc = String(t.location || "").toUpperCase();
       const locFrom = String(t.location_from || "").toUpperCase();
       const locTo = String(t.location_to || "").toUpperCase();
@@ -307,7 +302,7 @@ const TransactionsPage = () => {
         (reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon);
       if (!matchesFBARule) return false;
 
-      // Apply ALL active filters except showFulfillment and showFBA themselves
+      // Apply ALL active filters except showFBM and showFBA themselves
       if (skuFilter.length > 0 && !skuFilter.includes(t.sku)) return false;
 
       if (nameFilter) {
@@ -342,20 +337,144 @@ const TransactionsPage = () => {
 
       return true;
     });
+  };
 
-    fbaQty = fbaTransactions.reduce((acc, curr) => {
+  const findPrice = (sku, service, timestamp) => {
+    const ts = new Date(timestamp);
+    const condition = priceConditions.find((pc) => {
+      if (pc.sku !== sku || pc.service !== service) return false;
+      const from = new Date(pc.from_date);
+      const to = new Date(pc.to_date);
+      to.setHours(23, 59, 59, 999);
+      return ts >= from && ts <= to;
+    });
+    return condition ? condition.price : 0;
+  };
+
+  const handleDownloadChargesCSV = () => {
+    setIsExportingCharges(true);
+    try {
+      const headers = [
+        "Timestamp",
+        "SKU",
+        "Product Name",
+        "Shipment ID",
+        "Service",
+        "Qty",
+        "Unit Price",
+        "Total Charge",
+      ];
+
+      const rows = [];
+
+      // FBM Charges
+      filteredTransactions.forEach((t) => {
+        const isFbm =
+          t.type === "outbound" &&
+          (!t.location_to ||
+            String(t.location_to).trim() === "" ||
+            t.location_to === "None");
+
+        if (isFbm) {
+          const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
+          const unitPrice = findPrice(t.sku, "FBM", t.timestamp);
+          rows.push([
+            `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
+            `"${String(t.sku || "").replace(/"/g, '""')}"`,
+            `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+            `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+            "FBM",
+            qty,
+            unitPrice,
+            (qty * unitPrice).toFixed(2),
+          ]);
+        }
+      });
+
+      // FBA Charges
+      const fbaTransactions = getFbaTransactions();
+      fbaTransactions.forEach((t) => {
+        const qty =
+          t.qty ||
+          (String(t.type).toLowerCase() === "inbound"
+            ? t.inbound_qty
+            : -t.outbound_qty) ||
+          0;
+        const unitPrice = findPrice(t.sku, "FBA", t.timestamp);
+        rows.push([
+          `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
+          `"${String(t.sku || "").replace(/"/g, '""')}"`,
+          `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+          `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+          "FBA",
+          qty,
+          unitPrice,
+          (qty * unitPrice).toFixed(2),
+        ]);
+      });
+
+      const csvContent = [
+        headers.join(","),
+        ...rows.map((row) => row.join(",")),
+      ].join("\n");
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute(
+        "download",
+        `total_charges_${new Date().toISOString().split("T")[0]}.csv`,
+      );
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error("Error exporting charges CSV", err);
+      alert("Failed to export charges CSV");
+    } finally {
+      setIsExportingCharges(false);
+    }
+  };
+
+  const calculateCharges = () => {
+    let fbmQty = 0;
+    let fbmTotal = 0;
+    let fbaQty = 0;
+    let fbaTotal = 0;
+
+    // Use filteredTransactions for FBM Charge
+    filteredTransactions.forEach((t) => {
+      const isFbm =
+        t.type === "outbound" &&
+        (!t.location_to ||
+          String(t.location_to).trim() === "" ||
+          t.location_to === "None");
+
+      if (isFbm) {
+        const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
+        fbmQty += qty;
+        fbmTotal += qty * findPrice(t.sku, "FBM", t.timestamp);
+      }
+    });
+
+    // Use specific FBA logic for FBA Charge
+    const fbaTransactions = getFbaTransactions();
+    fbaTransactions.forEach((t) => {
       const qty =
-        curr.qty ||
-        (String(curr.type).toLowerCase() === "inbound"
-          ? curr.inbound_qty
-          : -curr.outbound_qty) ||
+        t.qty ||
+        (String(t.type).toLowerCase() === "inbound"
+          ? t.inbound_qty
+          : -t.outbound_qty) ||
         0;
-      return acc + qty;
-    }, 0);
+      fbaQty += qty;
+      fbaTotal += qty * findPrice(t.sku, "FBA", t.timestamp);
+    });
 
     return {
-      total: fulfillmentQty * 2 + fbaQty * 0.5,
-      fulfillmentQty,
+      total: fbmTotal + fbaTotal,
+      fbmQty,
       fbaQty,
     };
   };
@@ -444,6 +563,17 @@ const TransactionsPage = () => {
           >
             {isExporting ? "⌛ Exporting..." : "📥 Download CSV"}
           </button>
+          {isAdmin && (
+            <button
+              onClick={handleDownloadChargesCSV}
+              disabled={isExportingCharges}
+              className="bg-indigo-600 border-indigo-700 text-white border px-4 py-2 rounded text-sm font-medium hover:bg-indigo-700 flex items-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isExportingCharges
+                ? "⌛ Exporting..."
+                : "💰 Download Charges CSV"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -664,11 +794,11 @@ const TransactionsPage = () => {
               <label className="flex items-center space-x-2">
                 <input
                   type="checkbox"
-                  checked={showFulfillment}
-                  onChange={(e) => setShowFulfillment(e.target.checked)}
+                  checked={showFBM}
+                  onChange={(e) => setShowFBM(e.target.checked)}
                   className="rounded text-indigo-600"
                 />
-                <span className="font-medium">Fulfillment Only</span>
+                <span className="font-medium">FBM Only</span>
               </label>
             </div>
           </div>
@@ -714,8 +844,7 @@ const TransactionsPage = () => {
               })}
             </p>
             <p className="text-[10px] text-gray-400 mt-1">
-              Fulfillment: {charges.fulfillmentQty} x $2.00 | FBA:{" "}
-              {charges.fbaQty} x $0.50
+              FBM: {charges.fbmQty} units | FBA: {charges.fbaQty} units
             </p>
           </div>
         )}
