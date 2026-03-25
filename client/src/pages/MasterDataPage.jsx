@@ -29,7 +29,14 @@ const MasterDataPage = () => {
   const [editedLocations, setEditedLocations] = useState({});
   const [editedPriceConditions, setEditedPriceConditions] = useState({});
   const [showInactiveMaterials, setShowInactiveMaterials] = useState(false);
-  const [deleteModal, setDeleteModal] = useState({ isOpen: false, id: null });
+  const [deleteModal, setDeleteModal] = useState({
+    isOpen: false,
+    id: null,
+    sku: "",
+    service: "",
+    from_date: "",
+    to_date: "",
+  });
 
   const isAdmin = user?.role?.toLowerCase() === "admin";
   const isCustomer = user?.role?.toLowerCase() === "customer";
@@ -153,18 +160,47 @@ const MasterDataPage = () => {
   const confirmDelete = async () => {
     if (!deleteModal.id) return;
     try {
-      await api.delete(`/master-data/price-conditions/${deleteModal.id}`);
-      setMessage({ type: "success", text: "Price condition deleted" });
-      setDeleteModal({ isOpen: false, id: null });
+      // Use data in body for smart delete
+      await api.delete(`/master-data/price-conditions/${deleteModal.id}`, {
+        data: {
+          sku: deleteModal.sku,
+          service: deleteModal.service,
+          from_date: deleteModal.from_date,
+          to_date: deleteModal.to_date,
+        },
+      });
+      setMessage({ type: "success", text: "Price condition adjusted" });
+      setDeleteModal({
+        isOpen: false,
+        id: null,
+        sku: "",
+        service: "",
+        from_date: "",
+        to_date: "",
+      });
       fetchPriceConditions();
     } catch (err) {
       setMessage({ type: "error", text: "Error deleting price condition" });
-      setDeleteModal({ isOpen: false, id: null });
+      setDeleteModal({
+        isOpen: false,
+        id: null,
+        sku: "",
+        service: "",
+        from_date: "",
+        to_date: "",
+      });
     }
   };
 
-  const handleDeletePriceCondition = (id) => {
-    setDeleteModal({ isOpen: true, id });
+  const handleDeletePriceCondition = (pc) => {
+    setDeleteModal({
+      isOpen: true,
+      id: pc._id,
+      sku: pc.sku,
+      service: pc.service,
+      from_date: pc.from_date.split("T")[0],
+      to_date: pc.to_date.split("T")[0],
+    });
   };
 
   const handlePriceChange = (id, newPrice) => {
@@ -755,7 +791,7 @@ const MasterDataPage = () => {
                     {!isCustomer && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         <button
-                          onClick={() => handleDeletePriceCondition(pc._id)}
+                          onClick={() => handleDeletePriceCondition(pc)}
                           className="text-red-600 hover:text-red-900"
                         >
                           Delete
@@ -772,29 +808,77 @@ const MasterDataPage = () => {
 
       {/* Delete Confirmation Popup */}
       {deleteModal.isOpen && (
-        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
-          <div className="bg-white rounded-lg shadow-2xl border-2 border-red-100 max-w-sm w-full p-6 ring-1 ring-black ring-opacity-5">
+        <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md">
+          <div className="bg-white rounded-lg shadow-[0_20px_50px_rgba(0,0,0,0.3)] border-2 border-red-100 w-full p-6 ring-1 ring-black ring-opacity-5">
             <div className="flex items-center space-x-3 mb-4 text-red-600 font-bold">
               <span className="text-xl">⚠️</span>
               <h3 className="text-lg uppercase tracking-tight">
-                Confirm Deletion
+                Adjust Price Condition Range
               </h3>
             </div>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete this price condition?
+            <p className="text-sm text-gray-600 mb-4">
+              Specify the date range to remove for SKU:{" "}
+              <strong>{deleteModal.sku}</strong> ({deleteModal.service})
             </p>
+
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  From
+                </label>
+                <input
+                  type="date"
+                  value={deleteModal.from_date}
+                  onChange={(e) =>
+                    setDeleteModal({
+                      ...deleteModal,
+                      from_date: e.target.value,
+                    })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-1">
+                  To
+                </label>
+                <input
+                  type="date"
+                  value={deleteModal.to_date}
+                  onChange={(e) =>
+                    setDeleteModal({ ...deleteModal, to_date: e.target.value })
+                  }
+                  className="w-full border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-red-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <p className="text-xs text-red-500 mb-6 italic">
+              Existing price condition records within or overlapping this range
+              will be adjusted or deleted.
+            </p>
+
             <div className="flex justify-end space-x-3">
               <button
-                onClick={() => setDeleteModal({ isOpen: false, id: null })}
+                onClick={() =>
+                  setDeleteModal({
+                    isOpen: false,
+                    id: null,
+                    sku: "",
+                    service: "",
+                    from_date: "",
+                    to_date: "",
+                  })
+                }
                 className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-800 transition-colors uppercase tracking-wider border rounded-md"
               >
-                No
+                Cancel
               </button>
               <button
                 onClick={confirmDelete}
                 className="px-6 py-2 text-sm font-bold text-white bg-red-600 hover:bg-red-700 rounded-md shadow-md hover:shadow-lg transition-all active:scale-95 uppercase tracking-wider"
               >
-                Yes, Delete
+                Apply Adjustment
               </button>
             </div>
           </div>

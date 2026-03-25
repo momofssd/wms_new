@@ -283,14 +283,85 @@ router.put("/price-conditions/:id", async (req, res) => {
 });
 
 router.delete("/price-conditions/:id", async (req, res) => {
+  const { sku, service, from_date, to_date } = req.body;
   try {
     const db = mongoose.connection.db;
     const priceCol = db.collection("price_under");
-    await priceCol.deleteOne({
-      _id: new mongoose.Types.ObjectId(req.params.id),
-    });
-    res.json({ success: true, message: "Price condition deleted" });
+    const now = new Date();
+
+    if (sku && service && from_date && to_date) {
+      // Smart Delete: adjust overlapping records
+      const fDate = new Date(from_date);
+      const tDate = new Date(to_date);
+      const service_n = service.trim().toUpperCase();
+      const sku_n = sku.trim().toUpperCase();
+
+      const overlapping = await priceCol
+        .find({
+          sku: sku_n,
+          service: service_n,
+          from_date: { $lte: tDate },
+          to_date: { $gte: fDate },
+        })
+        .toArray();
+
+      for (const doc of overlapping) {
+        const eFrom = new Date(doc.from_date);
+        const eTo = new Date(doc.to_date);
+
+        if (eFrom < fDate && eTo > tDate) {
+          // Record completely contains the deletion range -> Split into two
+          const firstPartTo = new Date(fDate);
+          firstPartTo.setDate(firstPartTo.getDate() - 1);
+
+          const secondPartFrom = new Date(tDate);
+          secondPartFrom.setDate(secondPartFrom.getDate() + 1);
+
+          // Update existing to be the first part
+          await priceCol.updateOne(
+            { _id: doc._id },
+            { $set: { to_date: firstPartTo, updated_at: now } },
+          );
+
+          // Insert the second part
+          await priceCol.insertOne({
+            ...doc,
+            _id: undefined,
+            from_date: secondPartFrom,
+            created_at: now,
+            updated_at: now,
+          });
+        } else if (eFrom < fDate) {
+          // Record overlaps from the left -> Shorten it
+          const newEndDate = new Date(fDate);
+          newEndDate.setDate(newEndDate.getDate() - 1);
+          await priceCol.updateOne(
+            { _id: doc._id },
+            { $set: { to_date: newEndDate, updated_at: now } },
+          );
+        } else if (eTo > tDate) {
+          // Record overlaps from the right -> Shorten it
+          const newStartDate = new Date(tDate);
+          newStartDate.setDate(newStartDate.getDate() + 1);
+          await priceCol.updateOne(
+            { _id: doc._id },
+            { $set: { from_date: newStartDate, updated_at: now } },
+          );
+        } else {
+          // Record is completely within the deletion range -> Delete it
+          await priceCol.deleteOne({ _id: doc._id });
+        }
+      }
+      res.json({ success: true, message: "Price conditions adjusted" });
+    } else {
+      // Simple Delete by ID
+      await priceCol.deleteOne({
+        _id: new mongoose.Types.ObjectId(req.params.id),
+      });
+      res.json({ success: true, message: "Price condition deleted" });
+    }
   } catch (err) {
+    console.error("Error deleting price condition:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
