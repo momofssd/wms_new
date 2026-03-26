@@ -28,6 +28,15 @@ const MasterDataPage = () => {
   const [editedMaterials, setEditedMaterials] = useState({});
   const [editedLocations, setEditedLocations] = useState({});
   const [editedPriceConditions, setEditedPriceConditions] = useState({});
+  const [priceConditionFilters, setPriceConditionFilters] = useState({
+    sku: "",
+    product_name: "",
+    service: "",
+    from_date: "",
+    to_date: "",
+    price: "",
+    active: "",
+  });
   const [showInactiveMaterials, setShowInactiveMaterials] = useState(false);
   const [deleteModal, setDeleteModal] = useState({
     isOpen: false,
@@ -302,6 +311,29 @@ const MasterDataPage = () => {
   const visibleMaterials = showInactiveMaterials
     ? materials
     : materials.filter((m) => m.active);
+
+  const filteredPriceConditions = priceConditions.filter((pc) => {
+    return Object.keys(priceConditionFilters).every((key) => {
+      const filterValue = priceConditionFilters[key].toLowerCase();
+      if (!filterValue) return true;
+
+      if (key === "from_date" || key === "to_date") {
+        const dateStr = new Date(pc[key]).toLocaleDateString().toLowerCase();
+        return dateStr.includes(filterValue);
+      }
+
+      if (key === "price") {
+        return pc.price?.toString().includes(filterValue);
+      }
+
+      if (key === "active") {
+        const activeStr = pc.active ? "yes" : "no";
+        return activeStr.includes(filterValue);
+      }
+
+      return pc[key]?.toString().toLowerCase().includes(filterValue);
+    });
+  });
 
   return (
     <div>
@@ -733,9 +765,114 @@ const MasterDataPage = () => {
                     </th>
                   )}
                 </tr>
+                <tr className="bg-gray-100">
+                  <th className="px-4 py-2">
+                    <input
+                      type="text"
+                      placeholder="Filter SKU"
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.sku}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          sku: e.target.value,
+                        })
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-2">
+                    <input
+                      type="text"
+                      placeholder="Filter Name"
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.product_name}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          product_name: e.target.value,
+                        })
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-2">
+                    <select
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.service}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          service: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">All</option>
+                      <option value="FBA">FBA</option>
+                      <option value="FBM">FBM</option>
+                    </select>
+                  </th>
+                  <th className="px-4 py-2">
+                    <input
+                      type="text"
+                      placeholder="Filter From"
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.from_date}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          from_date: e.target.value,
+                        })
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-2">
+                    <input
+                      type="text"
+                      placeholder="Filter To"
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.to_date}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          to_date: e.target.value,
+                        })
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-2">
+                    <input
+                      type="text"
+                      placeholder="Filter Price"
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.price}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          price: e.target.value,
+                        })
+                      }
+                    />
+                  </th>
+                  <th className="px-4 py-2">
+                    <select
+                      className="w-full border rounded px-2 py-1 text-xs font-normal"
+                      value={priceConditionFilters.active}
+                      onChange={(e) =>
+                        setPriceConditionFilters({
+                          ...priceConditionFilters,
+                          active: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="">All</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </th>
+                  {!isCustomer && <th className="px-4 py-2"></th>}
+                </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {priceConditions.map((pc) => (
+                {filteredPriceConditions.map((pc) => (
                   <tr key={pc._id}>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {pc.sku}
