@@ -17,10 +17,6 @@ const STOPage = () => {
   const [preview, setPreview] = useState(null);
   const [completion, setCompletion] = useState(null);
   const [activeTab, setActiveTab] = useState("STOCK TRANSFER");
-  const [fbaLabels, setFbaLabels] = useState([]);
-  const [shippingLabels, setShippingLabels] = useState([]);
-  const [isDraggingFBA, setIsDraggingFBA] = useState(false);
-  const [isDraggingShipping, setIsDraggingShipping] = useState(false);
 
   // Re-fetch transactions whenever tab changes to ensure fresh data
   useEffect(() => {
@@ -128,23 +124,11 @@ const STOPage = () => {
 
   const handleConfirm = async () => {
     try {
-      const formData = new FormData();
-      formData.append("sku", preview.sku);
-      formData.append("fromLocation", preview.from_loc);
-      formData.append("toLocation", preview.to_loc);
-      formData.append("qty", preview.qty);
-
-      fbaLabels.forEach((file) => {
-        formData.append("fbaLabels", file);
-      });
-      shippingLabels.forEach((file) => {
-        formData.append("shippingLabels", file);
-      });
-
-      const res = await api.post("/sto/submit", formData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
+      const res = await api.post("/sto/submit", {
+        sku: preview.sku,
+        fromLocation: preview.from_loc,
+        toLocation: preview.to_loc,
+        qty: preview.qty,
       });
 
       setCompletion({
@@ -183,38 +167,6 @@ const STOPage = () => {
     setPreview(null);
     setCompletion(null);
     setMessage({ type: "", text: "" });
-    setFbaLabels([]);
-    setShippingLabels([]);
-    setIsDraggingFBA(false);
-    setIsDraggingShipping(false);
-  };
-
-  const handleDragOver = (e, type) => {
-    e.preventDefault();
-    if (type === "fba") setIsDraggingFBA(true);
-    else setIsDraggingShipping(true);
-  };
-
-  const handleDragLeave = (e, type) => {
-    e.preventDefault();
-    if (type === "fba") setIsDraggingFBA(false);
-    else setIsDraggingShipping(false);
-  };
-
-  const handleDrop = (e, type) => {
-    e.preventDefault();
-    if (type === "fba") setIsDraggingFBA(false);
-    else setIsDraggingShipping(false);
-
-    const files = Array.from(e.dataTransfer.files).filter(
-      (file) => file.type === "application/pdf",
-    );
-    if (files.length > 0) {
-      if (type === "fba") setFbaLabels((prev) => [...prev, ...files]);
-      else setShippingLabels((prev) => [...prev, ...files]);
-    } else {
-      setMessage({ type: "error", text: "Please upload PDF files only." });
-    }
   };
 
   return (
@@ -332,84 +284,17 @@ const STOPage = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Upload Shipment Labels (PDF)
+                    Transfer Quantity
                   </label>
-                  <div
-                    onDragOver={(e) => handleDragOver(e, "fba")}
-                    onDragLeave={(e) => handleDragLeave(e, "fba")}
-                    onDrop={(e) => handleDrop(e, "fba")}
-                    className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md cursor-pointer transition-colors ${
-                      isDraggingFBA
-                        ? "border-orange-500 bg-orange-50"
-                        : "border-gray-300 hover:border-gray-400"
-                    }`}
-                    onClick={() =>
-                      document.getElementById("fbaLabelsInputST").click()
-                    }
-                  >
-                    <div className="space-y-1 text-center">
-                      <svg
-                        className="mx-auto h-12 w-12 text-gray-400"
-                        stroke="currentColor"
-                        fill="none"
-                        viewBox="0 0 48 48"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      <div className="flex text-sm text-gray-600 justify-center">
-                        <span className="font-medium text-orange-600 hover:text-orange-500">
-                          Upload files
-                        </span>
-                        <p className="pl-1">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-gray-500">PDF only</p>
-                      <input
-                        id="fbaLabelsInputST"
-                        type="file"
-                        multiple
-                        accept="application/pdf"
-                        className="sr-only"
-                        onChange={(e) =>
-                          setFbaLabels((prev) => [
-                            ...prev,
-                            ...Array.from(e.target.files),
-                          ])
-                        }
-                      />
-                    </div>
-                  </div>
-                  {fbaLabels.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {fbaLabels.map((file, idx) => (
-                        <div
-                          key={idx}
-                          className="flex justify-between items-center text-xs bg-gray-50 p-1 rounded border"
-                        >
-                          <span className="truncate flex-1 font-medium text-gray-600">
-                            {file.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFbaLabels((prev) =>
-                                prev.filter((_, i) => i !== idx),
-                              );
-                            }}
-                            className="text-red-500 hover:text-red-700 ml-2 font-bold"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <input
+                    type="number"
+                    min="1"
+                    max={available}
+                    value={qty}
+                    onChange={(e) => setQty(parseInt(e.target.value) || 0)}
+                    className="w-full border rounded px-3 py-2"
+                    required
+                  />
                 </div>
 
                 <button
@@ -421,7 +306,9 @@ const STOPage = () => {
                 </button>
 
                 {message.text && message.type === "error" && (
-                  <div className="p-3 rounded bg-red-50 text-red-700 border border-red-200 text-sm"></div>
+                  <div className="p-3 rounded bg-red-50 text-red-700 border border-red-200 text-sm">
+                    {message.text}
+                  </div>
                 )}
               </form>
             </div>
@@ -684,84 +571,17 @@ const STOPage = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Upload Shipment Labels (PDF)
+                    Shipment Quantity
                   </label>
-                  <div
-                    onDragOver={(e) => handleDragOver(e, "fba")}
-                    onDragLeave={(e) => handleDragLeave(e, "fba")}
-                    onDrop={(e) => handleDrop(e, "fba")}
-                    className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md cursor-pointer transition-colors ${
-                      isDraggingFBA
-                        ? "border-orange-500 bg-orange-50"
-                        : "border-gray-300 hover:border-gray-400"
-                    }`}
-                    onClick={() =>
-                      document.getElementById("fbaLabelsInputFBA").click()
-                    }
-                  >
-                    <div className="space-y-1 text-center">
-                      <svg
-                        className="mx-auto h-12 w-12 text-gray-400"
-                        stroke="currentColor"
-                        fill="none"
-                        viewBox="0 0 48 48"
-                        aria-hidden="true"
-                      >
-                        <path
-                          d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                      <div className="flex text-sm text-gray-600 justify-center">
-                        <span className="font-medium text-orange-600 hover:text-orange-500">
-                          Upload files
-                        </span>
-                        <p className="pl-1">or drag and drop</p>
-                      </div>
-                      <p className="text-xs text-gray-500">PDF only</p>
-                      <input
-                        id="fbaLabelsInputFBA"
-                        type="file"
-                        multiple
-                        accept="application/pdf"
-                        className="sr-only"
-                        onChange={(e) =>
-                          setFbaLabels((prev) => [
-                            ...prev,
-                            ...Array.from(e.target.files),
-                          ])
-                        }
-                      />
-                    </div>
-                  </div>
-                  {fbaLabels.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {fbaLabels.map((file, idx) => (
-                        <div
-                          key={idx}
-                          className="flex justify-between items-center text-xs bg-gray-50 p-1 rounded border"
-                        >
-                          <span className="truncate flex-1 font-medium text-gray-600">
-                            {file.name}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setFbaLabels((prev) =>
-                                prev.filter((_, i) => i !== idx),
-                              );
-                            }}
-                            className="text-red-500 hover:text-red-700 ml-2 font-bold"
-                          >
-                            &times;
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <input
+                    type="number"
+                    min="1"
+                    max={available}
+                    value={qty}
+                    onChange={(e) => setQty(parseInt(e.target.value) || 0)}
+                    className="w-full border rounded px-3 py-2"
+                    required
+                  />
                 </div>
 
                 <button
@@ -793,12 +613,14 @@ const STOPage = () => {
                   <div className="text-gray-500 space-y-2">
                     <p>SKU:</p>
                     <p>Product Name:</p>
+                    <p>Quantity:</p>
                     <p>From Location:</p>
                     <p>To Warehouse:</p>
                   </div>
                   <div className="font-medium space-y-2 text-gray-900">
                     <p>{preview.sku}</p>
                     <p>{preview.product_name}</p>
+                    <p>{preview.qty}</p>
                     <p>{preview.from_loc}</p>
                     <p>AMAZON</p>
                   </div>
@@ -841,12 +663,14 @@ const STOPage = () => {
                   <div className="text-gray-500 space-y-2">
                     <p>SKU:</p>
                     <p>Product Name:</p>
+                    <p>Quantity:</p>
                     <p>From Location:</p>
                     <p>To Warehouse:</p>
                   </div>
                   <div className="font-medium space-y-2 text-gray-900">
                     <p>{completion.sku}</p>
                     <p>{completion.product_name}</p>
+                    <p>{completion.qty}</p>
                     <p>{completion.from_loc}</p>
                     <p>AMAZON</p>
                   </div>

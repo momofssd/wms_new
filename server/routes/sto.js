@@ -1,172 +1,123 @@
 const express = require("express");
 const router = express.Router();
 const mongoose = require("mongoose");
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
 const {
   getNextSTOTransactionNum,
   buildMovementDoc,
 } = require("../utils/movement");
 
-// Ensure uploads directory exists
-const uploadDir = path.join(__dirname, "../uploads");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+router.post("/submit", async (req, res) => {
+  const { sku, fromLocation, toLocation, qty } = req.body;
+  try {
+    const db = mongoose.connection.db;
+    const inventoryCol = db.collection("inventory");
+    const transactionsCol = db.collection("transactions");
+    const mmCol = db.collection("MM");
+    const movementCol = db.collection("movement");
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(
-      null,
-      file.fieldname + "-" + uniqueSuffix + path.extname(file.originalname),
+    const sku_n = String(sku).trim().toUpperCase();
+    const from_loc_n = String(fromLocation).trim().toUpperCase();
+    const to_loc_n = String(toLocation).trim().toUpperCase();
+    const qty_n = parseInt(qty);
+
+    // 1. Validate SKU
+    const mmDoc = await mmCol.findOne({ sku: sku_n });
+    if (!mmDoc) {
+      return res
+        .status(400)
+        .json({ message: `SKU ${sku_n} not found in Material Master` });
+    }
+    if (mmDoc.active === false) {
+      return res.status(400).json({ message: `SKU ${sku_n} is deactivated` });
+    }
+
+    const productName = String(mmDoc.product_name || mmDoc.name || "")
+      .trim()
+      .toUpperCase();
+
+    // 2. Check sufficient qty at fromLocation and decrement
+    const result = await inventoryCol.updateOne(
+      { sku: sku_n, location: from_loc_n, quantity: { $gte: qty_n } },
+      { $inc: { quantity: -qty_n } },
     );
-  },
-});
 
-const upload = multer({
-  storage: storage,
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype === "application/pdf") {
-      cb(null, true);
-    } else {
-      cb(new Error("Only PDF files are allowed"), false);
+    if (result.modifiedCount === 0) {
+      return res
+        .status(400)
+        .json({ message: `Insufficient stock at ${from_loc_n}` });
     }
-  },
-});
 
-router.post(
-  "/submit",
-  upload.fields([
-    { name: "fbaLabels", maxCount: 10 },
-    { name: "shippingLabels", maxCount: 10 },
-  ]),
-  async (req, res) => {
-    const { sku, fromLocation, toLocation, qty } = req.body;
-    try {
-      const db = mongoose.connection.db;
-      const inventoryCol = db.collection("inventory");
-      const transactionsCol = db.collection("transactions");
-      const mmCol = db.collection("MM");
-      const movementCol = db.collection("movement");
+    // 3. Increment qty at toLocation
+    await inventoryCol.updateOne(
+      { sku: sku_n, location: to_loc_n },
+      {
+        $set: { product_name: productName },
+        $inc: { quantity: qty_n },
+      },
+      { upsert: true },
+    );
 
-      const sku_n = String(sku).trim().toUpperCase();
-      const from_loc_n = String(fromLocation).trim().toUpperCase();
-      const to_loc_n = String(toLocation).trim().toUpperCase();
-      const qty_n = parseInt(qty);
+    // 4. Generate Txn Num and Log
+    const txnNum = await getNextSTOTransactionNum();
+    const timestamp = new Date();
 
-      // 1. Validate SKU
-      const mmDoc = await mmCol.findOne({ sku: sku_n });
-      if (!mmDoc) {
-        return res
-          .status(400)
-          .json({ message: `SKU ${sku_n} not found in Material Master` });
-      }
-      if (mmDoc.active === false) {
-        return res.status(400).json({ message: `SKU ${sku_n} is deactivated` });
-      }
+    const outboundTx = {
+      timestamp,
+      sku: sku_n,
+      product_name: productName,
+      shipment_id: "",
+      location: from_loc_n,
+      type: "outbound",
+      outbound_qty: qty_n,
+      reason: to_loc_n === "AMAZON" ? "FBA Shipment out" : "STO transfer out",
+      sto: true,
+      location_from: from_loc_n,
+      location_to: to_loc_n,
+      movement_transaction_num: txnNum,
+    };
 
-      const productName = String(mmDoc.product_name || mmDoc.name || "")
-        .trim()
-        .toUpperCase();
+    const inboundTx = {
+      timestamp,
+      sku: sku_n,
+      product_name: productName,
+      shipment_id: "",
+      location: to_loc_n,
+      type: "inbound",
+      inbound_qty: qty_n,
+      reason: "STO transfer in",
+      sto: true,
+      location_from: from_loc_n,
+      location_to: to_loc_n,
+      movement_transaction_num: txnNum,
+    };
 
-      // 2. Check sufficient qty at fromLocation and decrement
-      const result = await inventoryCol.updateOne(
-        { sku: sku_n, location: from_loc_n, quantity: { $gte: qty_n } },
-        { $inc: { quantity: -qty_n } },
-      );
+    await transactionsCol.insertMany([outboundTx, inboundTx]);
 
-      if (result.modifiedCount === 0) {
-        return res
-          .status(400)
-          .json({ message: `Insufficient stock at ${from_loc_n}` });
-      }
-
-      // 3. Increment qty at toLocation
-      await inventoryCol.updateOne(
-        { sku: sku_n, location: to_loc_n },
-        {
-          $set: { product_name: productName },
-          $inc: { quantity: qty_n },
-        },
-        { upsert: true },
-      );
-
-      // 4. Generate Txn Num and Log
-      const txnNum = await getNextSTOTransactionNum();
-      const timestamp = new Date();
-
-      const fbaLabels = req.files["fbaLabels"]
-        ? req.files["fbaLabels"].map((f) => f.filename)
-        : [];
-      const shippingLabels = req.files["shippingLabels"]
-        ? req.files["shippingLabels"].map((f) => f.filename)
-        : [];
-
-      const outboundTx = {
+    const mvDoc = buildMovementDoc("sto", txnNum, qty_n, from_loc_n, [
+      {
         timestamp,
         sku: sku_n,
         product_name: productName,
-        shipment_id: "",
-        location: from_loc_n,
-        type: "outbound",
-        outbound_qty: qty_n,
-        reason: to_loc_n === "AMAZON" ? "FBA Shipment out" : "STO transfer out",
-        sto: true,
+        qty: qty_n,
         location_from: from_loc_n,
         location_to: to_loc_n,
-        movement_transaction_num: txnNum,
-        fba_labels: fbaLabels,
-        shipping_labels: shippingLabels,
-      };
-
-      const inboundTx = {
-        timestamp,
-        sku: sku_n,
-        product_name: productName,
+        type: "sto",
         shipment_id: "",
-        location: to_loc_n,
-        type: "inbound",
-        inbound_qty: qty_n,
-        reason: "STO transfer in",
-        sto: true,
-        location_from: from_loc_n,
-        location_to: to_loc_n,
         movement_transaction_num: txnNum,
-      };
+      },
+    ]);
+    mvDoc.delivery_locations = { from: from_loc_n, to: to_loc_n };
 
-      await transactionsCol.insertMany([outboundTx, inboundTx]);
+    await movementCol.insertOne(mvDoc);
 
-      const mvDoc = buildMovementDoc("sto", txnNum, qty_n, from_loc_n, [
-        {
-          timestamp,
-          sku: sku_n,
-          product_name: productName,
-          qty: qty_n,
-          location_from: from_loc_n,
-          location_to: to_loc_n,
-          type: "sto",
-          shipment_id: "",
-          movement_transaction_num: txnNum,
-        },
-      ]);
-      mvDoc.delivery_locations = { from: from_loc_n, to: to_loc_n };
-
-      await movementCol.insertOne(mvDoc);
-
-      res.json({
-        success: true,
-        message: `STO Transaction Completed Successfully! Txn: ${txnNum}`,
-        txnNum,
-      });
-    } catch (err) {
-      res.status(500).json({ message: "Server error" });
-    }
-  },
-);
+    res.json({
+      success: true,
+      message: `STO Transaction Completed Successfully! Txn: ${txnNum}`,
+      txnNum,
+    });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
 module.exports = router;
