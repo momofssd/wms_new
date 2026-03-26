@@ -12,11 +12,12 @@
     "build": "cd client && npm run build"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@tailwindcss/postcss": "^4.1.18",
     "canvas": "^3.2.1",
     "concurrently": "^8.2.2",
     "lucide-react": "^0.564.0",
-    "multer": "^2.0.2",
+    "multer": "^2.1.1",
     "pdf-parse-fork": "^1.2.0",
     "recharts": "^3.7.0",
     "tailwindcss": "^4.1.18"

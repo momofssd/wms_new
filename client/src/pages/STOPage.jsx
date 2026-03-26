@@ -18,6 +18,11 @@ const STOPage = () => {
   const [completion, setCompletion] = useState(null);
   const [activeTab, setActiveTab] = useState("STOCK TRANSFER");
 
+  // Amazon FBA Specific States
+  const [fbaFile, setFbaFile] = useState(null);
+  const [fbaSessionLog, setFbaSessionLog] = useState([]);
+  const [isProcessingPdf, setIsProcessingPdf] = useState(false);
+
   // Re-fetch transactions whenever tab changes to ensure fresh data
   useEffect(() => {
     fetchTransactions();
@@ -167,6 +172,85 @@ const STOPage = () => {
     setPreview(null);
     setCompletion(null);
     setMessage({ type: "", text: "" });
+    setFbaFile(null);
+    setFbaSessionLog([]);
+  };
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file && file.type === "application/pdf") {
+      setFbaFile(file);
+    } else {
+      alert("Please upload a valid PDF file.");
+    }
+  };
+
+  const handleProcessPdf = async () => {
+    if (!fbaFile) {
+      alert("Please upload a PDF file first.");
+      return;
+    }
+    if (!selectedSku) {
+      alert("Please select a SKU first. It is required for the shipment.");
+      return;
+    }
+
+    setIsProcessingPdf(true);
+    setMessage({ type: "", text: "" });
+    const formData = new FormData();
+    formData.append("pdf", fbaFile);
+    formData.append("selectedSku", selectedSku);
+
+    try {
+      const res = await api.post("/sto/process-fba-pdf", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setFbaSessionLog(res.data.data);
+      setMessage({ type: "success", text: "PDF processed successfully!" });
+    } catch (err) {
+      console.error("Error processing PDF", err);
+      setMessage({
+        type: "error",
+        text: err.response?.data?.message || "Failed to process PDF",
+      });
+    } finally {
+      setIsProcessingPdf(false);
+    }
+  };
+
+  const handleQtyChange = (index, newQty) => {
+    const updatedLog = [...fbaSessionLog];
+    updatedLog[index].quantity = parseInt(newQty) || 0;
+    setFbaSessionLog(updatedLog);
+  };
+
+  const handleConfirmShipment = async () => {
+    if (!fromLoc) {
+      alert("Please select a From Location first.");
+      return;
+    }
+    if (fbaSessionLog.length === 0) return;
+
+    setIsProcessingPdf(true);
+    try {
+      const res = await api.post("/sto/submit-bulk-fba", {
+        shipments: fbaSessionLog,
+        fromLocation: fromLoc,
+      });
+      setMessage({ type: "success", text: res.data.message });
+      setFbaSessionLog([]);
+      setFbaFile(null);
+      fetchInventory();
+      fetchTransactions();
+    } catch (err) {
+      console.error("Error submitting bulk FBA", err);
+      setMessage({
+        type: "error",
+        text: err.response?.data?.message || "Failed to submit shipments",
+      });
+    } finally {
+      setIsProcessingPdf(false);
+    }
   };
 
   return (
@@ -503,101 +587,226 @@ const STOPage = () => {
       {activeTab === "AMAZON FBA" && (
         <>
           <p className="text-sm text-gray-500 mb-8">
-            Ship products to Amazon FBA warehouse (Location To is fixed as
-            AMAZON).
+            Process Amazon FBA Shipment labels and track inventory movements to
+            AMAZON location.
           </p>
 
-          {!preview && !completion ? (
-            <div className="max-w-4xl bg-white p-8 rounded shadow border">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-2 gap-8">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      SKU
-                    </label>
-                    <select
-                      value={selectedSku}
-                      onChange={(e) => setSelectedSku(e.target.value)}
-                      className="w-full border rounded px-3 py-2"
-                      required
-                    >
-                      <option value="">Select SKU</option>
-                      {skus.map((s) => (
-                        <option key={s.sku} value={s.sku}>
-                          {s.sku} - {s.product_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Location From
-                      </label>
-                      <select
-                        value={fromLoc}
-                        onChange={(e) => setFromLoc(e.target.value)}
-                        className="w-full border rounded px-3 py-2"
-                        required
-                      >
-                        <option value="">Select From</option>
-                        {locations.map((l) => (
-                          <option key={l} value={l}>
-                            {l}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Location To
-                      </label>
-                      <input
-                        type="text"
-                        value="AMAZON"
-                        readOnly
-                        className="w-full border rounded px-3 py-2 bg-gray-50 text-gray-500 cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {selectedSku && fromLoc && (
-                  <div className="bg-blue-50 p-3 rounded text-blue-800 text-sm font-medium border border-blue-100">
-                    Available at {fromLoc}: {available}
-                  </div>
-                )}
-
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Left Side: Upload & Action */}
+            <div className="bg-white p-6 rounded shadow border h-fit">
+              <div className="grid grid-cols-2 gap-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Shipment Quantity
+                    SKU (Required)
                   </label>
-                  <input
-                    type="number"
-                    min="1"
-                    max={available}
-                    value={qty}
-                    onChange={(e) => setQty(parseInt(e.target.value) || 0)}
+                  <select
+                    value={selectedSku}
+                    onChange={(e) => setSelectedSku(e.target.value)}
+                    className="w-full border rounded px-3 py-2 border-orange-300 focus:border-orange-500"
+                    required
+                  >
+                    <option value="">Select SKU to Ship</option>
+                    {skus.map((s) => (
+                      <option key={s.sku} value={s.sku}>
+                        {s.sku} - {s.product_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Location From
+                  </label>
+                  <select
+                    value={fromLoc}
+                    onChange={(e) => setFromLoc(e.target.value)}
                     className="w-full border rounded px-3 py-2"
                     required
-                  />
+                  >
+                    <option value="">Select From</option>
+                    {locations.map((l) => (
+                      <option key={l} value={l}>
+                        {l}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+              </div>
 
-                <button
-                  type="submit"
-                  disabled={available <= 0}
-                  className="w-full bg-orange-600 text-white rounded py-3 font-bold hover:bg-orange-700 disabled:opacity-50"
+              <h2 className="text-lg font-bold mb-4">Upload Shipment PDF</h2>
+              <div
+                className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+                  fbaFile
+                    ? "border-green-400 bg-green-50"
+                    : "border-gray-300 hover:border-indigo-400"
+                }`}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const file = e.dataTransfer.files[0];
+                  if (file && file.type === "application/pdf") {
+                    setFbaFile(file);
+                  }
+                }}
+              >
+                <input
+                  type="file"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  id="fba-pdf-upload"
+                />
+                <label
+                  htmlFor="fba-pdf-upload"
+                  className="cursor-pointer flex flex-col items-center"
                 >
-                  Create Amazon FBA Shipment
-                </button>
+                  <span className="text-4xl mb-2">📄</span>
+                  <span className="text-gray-600 font-medium">
+                    {fbaFile
+                      ? fbaFile.name
+                      : "Drag and drop or click to upload PDF"}
+                  </span>
+                  <span className="text-xs text-gray-400 mt-1">
+                    FBA Label & UPS Label Pairs
+                  </span>
+                </label>
+              </div>
 
-                {message.text && message.type === "error" && (
-                  <div className="p-3 rounded bg-red-50 text-red-700 border border-red-200 text-sm">
-                    {message.text}
-                  </div>
+              <button
+                onClick={handleProcessPdf}
+                disabled={!fbaFile || isProcessingPdf}
+                className="w-full mt-6 bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center"
+              >
+                {isProcessingPdf ? (
+                  <>
+                    <svg
+                      className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      ></circle>
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      ></path>
+                    </svg>
+                    Processing PDF...
+                  </>
+                ) : (
+                  "Create Amazon Shipment"
                 )}
-              </form>
+              </button>
+
+              {message.text && (
+                <div
+                  className={`mt-4 p-3 rounded text-sm border ${
+                    message.type === "error"
+                      ? "bg-red-50 text-red-700 border-red-200"
+                      : "bg-green-50 text-green-700 border-green-200"
+                  }`}
+                >
+                  {message.text}
+                </div>
+              )}
+            </div>
+
+            {/* Right Side: Session Log */}
+            <div className="bg-white p-6 rounded shadow border">
+              <h2 className="text-lg font-bold mb-4">
+                Session Log (Extracted Data)
+              </h2>
+              {fbaSessionLog.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          Box #
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          SKU
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          Qty
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          FBA ID
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          Tracking
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200 text-sm">
+                      {fbaSessionLog.map((row, idx) => (
+                        <tr key={idx}>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {row.boxNumber}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap font-medium">
+                            {row.sku}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <input
+                              type="number"
+                              value={row.quantity}
+                              onChange={(e) =>
+                                handleQtyChange(idx, e.target.value)
+                              }
+                              className="w-16 border rounded px-2 py-1 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                            {row.fbaShipmentId}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                            {row.trackingNumber}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      className="bg-orange-600 text-white px-6 py-2 rounded font-bold hover:bg-orange-700 disabled:opacity-50"
+                      disabled={isProcessingPdf || !fromLoc}
+                      onClick={handleConfirmShipment}
+                    >
+                      {isProcessingPdf ? "Processing..." : "Confirm Shipment"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400 italic">
+                  <span>No data extracted yet.</span>
+                  <span className="text-xs mt-2">
+                    Upload and process a PDF to see results.
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Moved original manual FBA form below if needed or can be removed if PDF is the only way now */}
+          <div className="mt-12 opacity-50 pointer-events-none">
+            <h3 className="text-md font-bold mb-4">Manual Entry (Disabled)</h3>
+            {/* The rest of the original form... */}
+          </div>
+
+          {!preview && !completion ? (
+            <div className="hidden">
+              {" "}
+              {/* Hide original form logic but keep states if needed */}
+              <form onSubmit={handleSubmit}></form>
             </div>
           ) : preview ? (
             <div className="max-w-2xl bg-white p-8 rounded shadow border border-orange-200">
