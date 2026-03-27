@@ -119,12 +119,30 @@ const buildMovementDoc = (
   location,
   details,
 ) => {
+  // Extract unique Shipment IDs and FBA IDs from details if they exist
+  const shipmentIds = [
+    ...new Set(
+      (details || [])
+        .map((d) => d.shipment_id || d.trackingNumber)
+        .filter(Boolean),
+    ),
+  ];
+  const fbaIds = [
+    ...new Set(
+      (details || [])
+        .map((d) => d["FBA ID"] || d.fbaShipmentId || d.fba_id)
+        .filter(Boolean),
+    ),
+  ];
+
   return {
     timestamp: new Date(),
     movement_type: String(movementType).trim().toLowerCase(),
     transaction_num: String(transactionNum),
     qty: parseInt(qty),
     location: String(location).trim().toUpperCase(),
+    shipment_id: shipmentIds.join(", "),
+    "FBA ID": fbaIds.join(", "),
     details: details,
   };
 };
