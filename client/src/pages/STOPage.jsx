@@ -292,6 +292,37 @@ const STOPage = () => {
     }
     if (fbaSessionLog.length === 0) return;
 
+    // Check for duplicate tracking in the current session log
+    const trackings = fbaSessionLog.map((s) =>
+      String(s.trackingNumber || "").trim(),
+    );
+    const hasDuplicateInLog = trackings.some(
+      (t, index) => t !== "" && trackings.indexOf(t) !== index,
+    );
+    if (hasDuplicateInLog) {
+      setMessage({
+        type: "error",
+        text: "Duplicate tracking number found in the current session log. Please check and remove duplicates.",
+      });
+      return;
+    }
+
+    // Check if any tracking already exists in transaction history
+    // (This is also checked on the backend, but we check here for better UX)
+    for (const ship of fbaSessionLog) {
+      const tracking = String(ship.trackingNumber || "").trim();
+      if (!tracking) continue;
+
+      const exists = transactions.some((t) => t.shipment_id === tracking);
+      if (exists) {
+        setMessage({
+          type: "error",
+          text: `Tracking number ${tracking} has already been processed in a previous shipment.`,
+        });
+        return;
+      }
+    }
+
     // Check inventory availability
     const totalNeeded = fbaSessionLog.reduce(
       (acc, curr) => acc + parseInt(curr.quantity || 0),
@@ -859,41 +890,69 @@ const STOPage = () => {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200 text-sm">
-                      {fbaSessionLog.map((row, idx) => (
-                        <tr key={idx}>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            {row.boxNumber}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap font-medium">
-                            {row.sku}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <input
-                              type="number"
-                              value={row.quantity}
-                              onChange={(e) =>
-                                handleQtyChange(idx, e.target.value)
-                              }
-                              className="w-16 border rounded px-2 py-1 text-sm"
-                            />
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
-                            {row.fbaShipmentId}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
-                            {row.trackingNumber}
-                          </td>
-                          <td className="px-3 py-2 whitespace-nowrap">
-                            <button
-                              onClick={() => handleDeleteFbaRow(idx)}
-                              className="text-red-500 hover:text-red-700 text-lg"
-                              title="Delete row"
+                      {fbaSessionLog.map((row, idx) => {
+                        const isDuplicateInLog =
+                          row.trackingNumber &&
+                          fbaSessionLog.filter(
+                            (s) => s.trackingNumber === row.trackingNumber,
+                          ).length > 1;
+                        const isDuplicateInHistory = transactions.some(
+                          (t) => t.shipment_id === row.trackingNumber,
+                        );
+                        const isDuplicate =
+                          isDuplicateInLog || isDuplicateInHistory;
+
+                        return (
+                          <tr
+                            key={idx}
+                            className={isDuplicate ? "bg-red-50" : ""}
+                          >
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {row.boxNumber}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap font-medium">
+                              {row.sku}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <input
+                                type="number"
+                                value={row.quantity}
+                                onChange={(e) =>
+                                  handleQtyChange(idx, e.target.value)
+                                }
+                                className="w-16 border rounded px-2 py-1 text-sm"
+                              />
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
+                              {row.fbaShipmentId}
+                            </td>
+                            <td
+                              className={`px-3 py-2 whitespace-nowrap text-xs ${isDuplicate ? "text-red-600 font-bold" : "text-gray-500"}`}
                             >
-                              🗑️
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                              {row.trackingNumber}
+                              {isDuplicateInLog && (
+                                <div className="text-[10px] font-normal">
+                                  (Duplicate in list)
+                                </div>
+                              )}
+                              {isDuplicateInHistory && (
+                                <div className="text-[10px] font-normal">
+                                  (Already in transactions)
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <button
+                                onClick={() => handleDeleteFbaRow(idx)}
+                                className="text-red-500 hover:text-red-700 text-lg"
+                                title="Delete row"
+                              >
+                                🗑️
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   <div className="mt-6 flex justify-end">

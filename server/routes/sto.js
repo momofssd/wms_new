@@ -144,6 +144,23 @@ router.post("/submit-bulk-fba", async (req, res) => {
     const timestamp = new Date();
     const results = [];
 
+    // Check for duplicate tracking numbers in the database before proceeding
+    const trackingNumbers = shipments
+      .map((s) => String(s.trackingNumber || "").trim())
+      .filter((t) => t !== "");
+
+    if (trackingNumbers.length > 0) {
+      const existingTx = await transactionsCol.findOne({
+        shipment_id: { $in: trackingNumbers },
+      });
+
+      if (existingTx) {
+        return res.status(400).json({
+          message: `Duplicate tracking number found: ${existingTx.shipment_id}. This shipment has already been processed.`,
+        });
+      }
+    }
+
     for (const ship of shipments) {
       const sku_n = String(ship.sku).trim().toUpperCase();
       const qty_n = parseInt(ship.quantity);
@@ -258,6 +275,20 @@ router.post("/submit", async (req, res) => {
     const from_loc_n = String(fromLocation).trim().toUpperCase();
     const to_loc_n = String(toLocation).trim().toUpperCase();
     const qty_n = parseInt(qty);
+
+    // Check for duplicate tracking if this is an FBA shipment (to_loc is AMAZON)
+    // Note: Manual STO currently doesn't have a tracking field in the request,
+    // but we add this for future-proofing and consistency.
+    if (to_loc_n === "AMAZON" && req.body.shipment_id) {
+      const existingTx = await transactionsCol.findOne({
+        shipment_id: String(req.body.shipment_id).trim(),
+      });
+      if (existingTx) {
+        return res.status(400).json({
+          message: `Duplicate tracking number found: ${req.body.shipment_id}. This shipment has already been processed.`,
+        });
+      }
+    }
 
     const mmDoc = await mmCol.findOne({ sku: sku_n });
     if (!mmDoc) {
