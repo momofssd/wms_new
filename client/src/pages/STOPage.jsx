@@ -94,11 +94,16 @@ const STOPage = () => {
   const fetchTransactions = async () => {
     try {
       const res = await api.get("/transactions");
-      // Filter only STO related transactions
-      const stoData = res.data.filter((t) =>
-        String(t.reason || "")
-          .toUpperCase()
-          .includes("STO"),
+      // Filter only STO related transactions (including FBA which are STOs)
+      const stoData = res.data.filter(
+        (t) =>
+          t.sto === true ||
+          String(t.reason || "")
+            .toUpperCase()
+            .includes("STO") ||
+          String(t.reason || "")
+            .toUpperCase()
+            .includes("FBA"),
       );
       setTransactions(stoData);
     } catch (err) {
@@ -1046,6 +1051,9 @@ const STOPage = () => {
                       Trans Num
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Qty
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       FBA ID
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
@@ -1059,7 +1067,13 @@ const STOPage = () => {
                 <tbody className="bg-white divide-y divide-gray-200 text-sm">
                   {[...transactions]
                     .filter(
-                      (t) => t.location !== "AMAZON" && t.type === "outbound",
+                      (t) =>
+                        t.location !== "AMAZON" &&
+                        t.type === "outbound" &&
+                        (t.sto === true ||
+                          String(t.reason || "")
+                            .toUpperCase()
+                            .includes("FBA")),
                     ) // FBA History from perspective of warehouse
                     .sort(
                       (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
@@ -1077,6 +1091,9 @@ const STOPage = () => {
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-gray-500">
                           {t.movement_transaction_num}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap font-bold text-gray-900">
+                          {t.outbound_qty || t.qty}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-xs text-gray-500">
                           {t["FBA ID"]}
