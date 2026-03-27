@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import api from "../api";
 import TransactionChart from "../components/TransactionChart";
 import { useAuth } from "../context/AuthContext";
@@ -95,7 +95,7 @@ const TransactionsPage = () => {
     }
   };
 
-  useEffect(() => {
+  const groupedTransactions = useMemo(() => {
     let filtered = [...transactions].sort(
       (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
     );
@@ -171,8 +171,25 @@ const TransactionsPage = () => {
       });
     }
 
-    setFilteredTransactions(filtered);
-    setCurrentPage(1); // Reset to first page when filters change
+    // Grouping logic
+    const groups = [];
+    const groupMap = new Map();
+
+    filtered.forEach((t) => {
+      const transNum = t.movement_transaction_num || "No Trans Num";
+      if (!groupMap.has(transNum)) {
+        const newGroup = {
+          transNum,
+          timestamp: t.timestamp, // Use the first transaction's timestamp for the group
+          items: [],
+        };
+        groupMap.set(transNum, newGroup);
+        groups.push(newGroup);
+      }
+      groupMap.get(transNum).items.push(t);
+    });
+
+    return groups;
   }, [
     transactions,
     skuFilter,
@@ -185,6 +202,14 @@ const TransactionsPage = () => {
     showFBA,
     showFBM,
   ]);
+
+  useEffect(() => {
+    // Flatten grouped transactions back for filters that expect a flat list if needed,
+    // but here we just need to update filteredTransactions for the stats and count.
+    const flat = groupedTransactions.flatMap((g) => g.items);
+    setFilteredTransactions(flat);
+    setCurrentPage(1);
+  }, [groupedTransactions]);
 
   // Derived shipment data based on current transaction filters
   const shipmentData = useMemo(() => {
@@ -221,14 +246,14 @@ const TransactionsPage = () => {
     endDate,
   ]);
 
-  // Get current page's items
+  // Get current page's items (paginating groups)
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentItems = filteredTransactions.slice(
+  const currentGroups = groupedTransactions.slice(
     indexOfFirstItem,
     indexOfLastItem,
   );
-  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const totalPages = Math.ceil(groupedTransactions.length / itemsPerPage);
 
   const handleDownloadCSV = () => {
     setIsExporting(true);
@@ -936,11 +961,12 @@ const TransactionsPage = () => {
               </option>
             ))}
           </select>
-          <span>entries</span>
+          <span>groups</span>
           <span className="ml-4 text-gray-500">
-            Showing {filteredTransactions.length > 0 ? indexOfFirstItem + 1 : 0}{" "}
-            to {Math.min(indexOfLastItem, filteredTransactions.length)} of{" "}
-            {filteredTransactions.length} entries
+            Showing {groupedTransactions.length > 0 ? indexOfFirstItem + 1 : 0}{" "}
+            to {Math.min(indexOfLastItem, groupedTransactions.length)} of{" "}
+            {groupedTransactions.length} groups ({filteredTransactions.length}{" "}
+            items)
           </span>
         </div>
 
@@ -1018,69 +1044,82 @@ const TransactionsPage = () => {
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-gray-200 text-xs text-gray-600">
-            {currentItems.map((t, idx) => (
-              <tr key={idx}>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {new Date(t.timestamp).toLocaleString()}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
-                  {t.sku}
-                </td>
-                <td className="px-3 py-2 max-w-[200px] truncate">
-                  {t.product_name}
-                </td>
-                <td className="px-3 py-2 max-w-[150px] truncate">
-                  {t["FBA ID"]}
-                </td>
-                <td className="px-3 py-2 max-w-[150px] truncate">
-                  {(() => {
-                    const sid = (t.shipment_id || "").replace(/\s+/g, "");
-                    if (sid.toLowerCase().startsWith("1z")) {
-                      return (
-                        <a
-                          href={`https://www.ups.com/track?tracknum=${sid}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:underline"
-                        >
-                          {t.shipment_id}
-                        </a>
-                      );
-                    }
-                    if (
-                      sid.length === 22 &&
-                      /^\d+$/.test(sid) &&
-                      ["92", "93", "94", "95"].some((p) => sid.startsWith(p))
-                    ) {
-                      return (
-                        <a
-                          href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${sid}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:underline"
-                        >
-                          {t.shipment_id}
-                        </a>
-                      );
-                    }
-                    return t.shipment_id;
-                  })()}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  {t.movement_transaction_num}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">{t.location}</td>
-                <td
-                  className={`px-3 py-2 whitespace-nowrap capitalize font-medium ${t.type === "inbound" ? "text-green-600" : "text-orange-600"}`}
-                >
-                  {t.type}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap font-bold">
-                  {t.qty ||
-                    (t.type === "inbound" ? t.inbound_qty : -t.outbound_qty)}
-                </td>
-                <td className="px-3 py-2 italic">{t.reason}</td>
-              </tr>
+            {currentGroups.map((group) => (
+              <Fragment key={group.transNum}>
+                {group.items.map((t, idx) => (
+                  <tr
+                    key={`${group.transNum}-${idx}`}
+                    className={idx === 0 ? "border-t-2 border-gray-300" : ""}
+                  >
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {idx === 0 ? new Date(t.timestamp).toLocaleString() : ""}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                      {t.sku}
+                    </td>
+                    <td className="px-3 py-2 max-w-[200px] truncate">
+                      {t.product_name}
+                    </td>
+                    <td className="px-3 py-2 max-w-[150px] truncate">
+                      {t["FBA ID"]}
+                    </td>
+                    <td className="px-3 py-2 max-w-[150px] truncate">
+                      {(() => {
+                        const sid = (t.shipment_id || "").replace(/\s+/g, "");
+                        if (sid.toLowerCase().startsWith("1z")) {
+                          return (
+                            <a
+                              href={`https://www.ups.com/track?tracknum=${sid}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              {t.shipment_id}
+                            </a>
+                          );
+                        }
+                        if (
+                          sid.length === 22 &&
+                          /^\d+$/.test(sid) &&
+                          ["92", "93", "94", "95"].some((p) =>
+                            sid.startsWith(p),
+                          )
+                        ) {
+                          return (
+                            <a
+                              href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${sid}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              {t.shipment_id}
+                            </a>
+                          );
+                        }
+                        return t.shipment_id;
+                      })()}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-bold text-indigo-700">
+                      {idx === 0 ? t.movement_transaction_num : ""}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {t.location}
+                    </td>
+                    <td
+                      className={`px-3 py-2 whitespace-nowrap capitalize font-medium ${t.type === "inbound" ? "text-green-600" : "text-orange-600"}`}
+                    >
+                      {t.type}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap font-bold">
+                      {t.qty ||
+                        (t.type === "inbound"
+                          ? t.inbound_qty
+                          : -t.outbound_qty)}
+                    </td>
+                    <td className="px-3 py-2 italic">{t.reason}</td>
+                  </tr>
+                ))}
+              </Fragment>
             ))}
           </tbody>
         </table>
