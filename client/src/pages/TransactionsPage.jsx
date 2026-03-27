@@ -1033,7 +1033,38 @@ const TransactionsPage = () => {
                   {t["FBA ID"]}
                 </td>
                 <td className="px-3 py-2 max-w-[150px] truncate">
-                  {t.shipment_id}
+                  {(() => {
+                    const sid = (t.shipment_id || "").replace(/\s+/g, "");
+                    if (sid.toLowerCase().startsWith("1z")) {
+                      return (
+                        <a
+                          href={`https://www.ups.com/track?tracknum=${sid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          {t.shipment_id}
+                        </a>
+                      );
+                    }
+                    if (
+                      sid.length === 22 &&
+                      /^\d+$/.test(sid) &&
+                      ["92", "93", "94", "95"].some((p) => sid.startsWith(p))
+                    ) {
+                      return (
+                        <a
+                          href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${sid}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:underline"
+                        >
+                          {t.shipment_id}
+                        </a>
+                      );
+                    }
+                    return t.shipment_id;
+                  })()}
                 </td>
                 <td className="px-3 py-2 whitespace-nowrap">
                   {t.movement_transaction_num}
