@@ -19,8 +19,9 @@ const STOPage = () => {
   const [activeTab, setActiveTab] = useState("STOCK TRANSFER");
 
   // Amazon FBA Specific States
-  const [fbaFile, setFbaFile] = useState(null);
+  const [fbaFiles, setFbaFiles] = useState([]);
   const [fbaSessionLog, setFbaSessionLog] = useState([]);
+  const [fbaTotalTokens, setFbaTotalTokens] = useState(0);
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
 
   // Re-fetch transactions whenever tab changes to ensure fresh data
@@ -177,41 +178,74 @@ const STOPage = () => {
   };
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file && file.type === "application/pdf") {
-      setFbaFile(file);
-    } else {
-      alert("Please upload a valid PDF file.");
+    const selectedFiles = Array.from(e.target.files);
+    const validFiles = selectedFiles.filter(
+      (file) => file.type === "application/pdf",
+    );
+
+    if (validFiles.length !== selectedFiles.length) {
+      alert("Some selected files are not valid PDFs and will be ignored.");
     }
+
+    setFbaFiles(validFiles);
   };
 
   const handleProcessPdf = async () => {
-    if (!fbaFile) {
-      alert("Please upload a PDF file first.");
+    if (fbaFiles.length === 0) {
+      setMessage({
+        type: "error",
+        text: "Please upload at least one PDF file first.",
+      });
       return;
     }
     if (!selectedSku) {
-      alert("Please select a SKU first. It is required for the shipment.");
+      setMessage({
+        type: "error",
+        text: "Please select a SKU first. It is required for the shipment.",
+      });
       return;
     }
 
     setIsProcessingPdf(true);
     setMessage({ type: "", text: "" });
-    const formData = new FormData();
-    formData.append("pdf", fbaFile);
-    formData.append("selectedSku", selectedSku);
+    setFbaTotalTokens(0);
+
+    let allResults = [];
+    let boxOffset = 1;
+    let accumulatedTokens = 0;
 
     try {
-      const res = await api.post("/sto/process-fba-pdf", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
+      for (const file of fbaFiles) {
+        const formData = new FormData();
+        formData.append("pdf", file); // Backend expects "pdf"
+        formData.append("selectedSku", selectedSku);
+
+        const res = await api.post("/sto/process-fba-pdf", formData, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+
+        // Adjust box numbers and aggregate
+        const extracted = res.data.data;
+        accumulatedTokens += res.data.tokens || 0;
+        extracted.forEach((box) => {
+          box.boxNumber = `Box ${boxOffset}`;
+          allResults.push(box);
+          boxOffset++;
+        });
+      }
+
+      setFbaSessionLog(allResults);
+      setFbaTotalTokens(accumulatedTokens);
+      setMessage({
+        type: "success",
+        text: `Processed ${fbaFiles.length} file(s) successfully!`,
       });
-      setFbaSessionLog(res.data.data);
-      setMessage({ type: "success", text: "PDF processed successfully!" });
     } catch (err) {
-      console.error("Error processing PDF", err);
+      console.error("Error processing PDFs sequentially", err);
       setMessage({
         type: "error",
-        text: err.response?.data?.message || "Failed to process PDF",
+        text:
+          err.response?.data?.message || "Failed to process one or more PDFs",
       });
     } finally {
       setIsProcessingPdf(false);
@@ -224,12 +258,47 @@ const STOPage = () => {
     setFbaSessionLog(updatedLog);
   };
 
+  const handleDeleteFbaRow = (index) => {
+    const updatedLog = fbaSessionLog.filter((_, i) => i !== index);
+    // Re-index box numbers
+    const reindexedLog = updatedLog.map((box, i) => ({
+      ...box,
+      boxNumber: `Box ${i + 1}`,
+    }));
+    setFbaSessionLog(reindexedLog);
+  };
+
+  const handleResetFba = () => {
+    setSelectedSku("");
+    setFromLoc("");
+    setFbaFiles([]);
+    setFbaSessionLog([]);
+    setFbaTotalTokens(0);
+    setMessage({ type: "", text: "" });
+  };
+
   const handleConfirmShipment = async () => {
     if (!fromLoc) {
-      alert("Please select a From Location first.");
+      setMessage({
+        type: "error",
+        text: "Please select a From Location first.",
+      });
       return;
     }
     if (fbaSessionLog.length === 0) return;
+
+    // Check inventory availability
+    const totalNeeded = fbaSessionLog.reduce(
+      (acc, curr) => acc + parseInt(curr.quantity || 0),
+      0,
+    );
+    if (totalNeeded > available) {
+      setMessage({
+        type: "error",
+        text: `Insufficient inventory! Total required: ${totalNeeded}, Available at ${fromLoc}: ${available}`,
+      });
+      return;
+    }
 
     setIsProcessingPdf(true);
     try {
@@ -239,7 +308,7 @@ const STOPage = () => {
       });
       setMessage({ type: "success", text: res.data.message });
       setFbaSessionLog([]);
-      setFbaFile(null);
+      setFbaFiles([]);
       fetchInventory();
       fetchTransactions();
     } catch (err) {
@@ -330,11 +399,13 @@ const STOPage = () => {
                         required
                       >
                         <option value="">Select From</option>
-                        {locations.map((l) => (
-                          <option key={l} value={l}>
-                            {l}
-                          </option>
-                        ))}
+                        {locations
+                          .filter((l) => l !== "AMAZON")
+                          .map((l) => (
+                            <option key={l} value={l}>
+                              {l}
+                            </option>
+                          ))}
                       </select>
                     </div>
                     <div>
@@ -624,34 +695,53 @@ const STOPage = () => {
                     required
                   >
                     <option value="">Select From</option>
-                    {locations.map((l) => (
-                      <option key={l} value={l}>
-                        {l}
-                      </option>
-                    ))}
+                    {locations
+                      .filter((l) => l !== "AMAZON")
+                      .map((l) => (
+                        <option key={l} value={l}>
+                          {l}
+                        </option>
+                      ))}
                   </select>
                 </div>
               </div>
 
-              <h2 className="text-lg font-bold mb-4">Upload Shipment PDF</h2>
+              {selectedSku && fromLoc && (
+                <div className="bg-blue-50 p-3 rounded text-blue-800 text-sm font-medium border border-blue-100 mb-6">
+                  Available at {fromLoc}: {available}
+                </div>
+              )}
+
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold">Upload Shipment PDF</h2>
+                <button
+                  onClick={handleResetFba}
+                  className="text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded transition-colors"
+                >
+                  Reset Form
+                </button>
+              </div>
               <div
                 className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-                  fbaFile
+                  fbaFiles.length > 0
                     ? "border-green-400 bg-green-50"
                     : "border-gray-300 hover:border-indigo-400"
                 }`}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {
                   e.preventDefault();
-                  const file = e.dataTransfer.files[0];
-                  if (file && file.type === "application/pdf") {
-                    setFbaFile(file);
+                  const files = Array.from(e.dataTransfer.files).filter(
+                    (file) => file.type === "application/pdf",
+                  );
+                  if (files.length > 0) {
+                    setFbaFiles(files);
                   }
                 }}
               >
                 <input
                   type="file"
                   accept=".pdf"
+                  multiple
                   onChange={handleFileChange}
                   className="hidden"
                   id="fba-pdf-upload"
@@ -662,10 +752,17 @@ const STOPage = () => {
                 >
                   <span className="text-4xl mb-2">📄</span>
                   <span className="text-gray-600 font-medium">
-                    {fbaFile
-                      ? fbaFile.name
-                      : "Drag and drop or click to upload PDF"}
+                    {fbaFiles.length > 0
+                      ? `${fbaFiles.length} file(s) selected`
+                      : "Drag and drop or click to upload PDF(s)"}
                   </span>
+                  {fbaFiles.length > 0 && (
+                    <div className="mt-2 text-xs text-gray-500 max-h-24 overflow-y-auto">
+                      {fbaFiles.map((f, i) => (
+                        <div key={i}>{f.name}</div>
+                      ))}
+                    </div>
+                  )}
                   <span className="text-xs text-gray-400 mt-1">
                     FBA Label & UPS Label Pairs
                   </span>
@@ -674,7 +771,7 @@ const STOPage = () => {
 
               <button
                 onClick={handleProcessPdf}
-                disabled={!fbaFile || isProcessingPdf}
+                disabled={fbaFiles.length === 0 || isProcessingPdf}
                 className="w-full mt-6 bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700 disabled:opacity-50 flex justify-center items-center"
               >
                 {isProcessingPdf ? (
@@ -721,9 +818,16 @@ const STOPage = () => {
 
             {/* Right Side: Session Log */}
             <div className="bg-white p-6 rounded shadow border">
-              <h2 className="text-lg font-bold mb-4">
-                Session Log (Extracted Data)
-              </h2>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-bold">
+                  Session Log (Extracted Data)
+                </h2>
+                {fbaTotalTokens > 0 && (
+                  <span className="text-xs font-medium text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full border border-indigo-100">
+                    Total Tokens: {fbaTotalTokens.toLocaleString()}
+                  </span>
+                )}
+              </div>
               {fbaSessionLog.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
@@ -743,6 +847,9 @@ const STOPage = () => {
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                           Tracking
+                        </th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                          Action
                         </th>
                       </tr>
                     </thead>
@@ -770,6 +877,15 @@ const STOPage = () => {
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                             {row.trackingNumber}
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <button
+                              onClick={() => handleDeleteFbaRow(idx)}
+                              className="text-red-500 hover:text-red-700 text-lg"
+                              title="Delete row"
+                            >
+                              🗑️
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -930,6 +1046,12 @@ const STOPage = () => {
                       Trans Num
                     </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      FBA ID
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                      Tracking (Shipment ID)
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                       From Loc
                     </th>
                   </tr>
@@ -955,6 +1077,12 @@ const STOPage = () => {
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-gray-500">
                           {t.movement_transaction_num}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-xs text-gray-500">
+                          {t["FBA ID"]}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap text-xs text-gray-500">
+                          {t.shipment_id}
                         </td>
                         <td className="px-4 py-4 whitespace-nowrap text-gray-500">
                           {t.location}

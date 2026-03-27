@@ -26,6 +26,7 @@ const upload = multer({
   },
 });
 
+// Reverting to single file upload. The frontend will loop and call this one-by-one.
 router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
   try {
     console.log("PDF processing request received. SKU:", req.body.selectedSku);
@@ -45,10 +46,11 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
     const base64Pdf = pdfBuffer.toString("base64");
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
+    const modelName = "gemini-2.5-flash-lite";
 
     // Using EXACTLY Gemini 3.0 Flash with JSON Mode and Safety Filters off
     const model = genAI.getGenerativeModel({
-      model: "gemini-3-flash-preview", // <--- THIS IS CAUSING THE 404 CRASH
+      model: modelName,
       generationConfig: {
         responseMimeType: "application/json",
       },
@@ -86,7 +88,9 @@ You MUST return a JSON array of objects. Each object must represent a box and co
 - "trackingNumber" (string)
 - "weight" (string, e.g., "28 LBS")`;
 
-    console.log("Calling Gemini 3.0 Flash API...");
+    console.log(
+      `Calling Gemini (model: ${modelName}) for file: ${req.file.originalname}`,
+    );
     const result = await model.generateContent([
       { text: prompt },
       {
@@ -114,8 +118,9 @@ You MUST return a JSON array of objects. Each object must represent a box and co
       .trim();
 
     const extractedData = JSON.parse(responseText);
+    const tokens = result.response.usageMetadata?.totalTokenCount || 0;
 
-    res.json({ success: true, data: extractedData });
+    res.json({ success: true, data: extractedData, tokens });
   } catch (err) {
     console.error("CRITICAL ERROR processing PDF:", err.message);
     res.status(500).json({
@@ -170,11 +175,17 @@ router.post("/submit-bulk-fba", async (req, res) => {
 
       const txnNum = await getNextSTOTransactionNum();
 
+      // Mapping rules:
+      // shipment_id = trackingNumber
+      // FBA ID = fbaShipmentId
+      // tracking_number = DELETE/REMOVE
+
       const outboundTx = {
         timestamp,
         sku: sku_n,
         product_name: productName,
-        shipment_id: ship.fbaShipmentId,
+        shipment_id: String(ship.trackingNumber || "").trim(),
+        "FBA ID": String(ship.fbaShipmentId || "").trim(),
         location: from_loc_n,
         type: "outbound",
         outbound_qty: qty_n,
@@ -183,14 +194,14 @@ router.post("/submit-bulk-fba", async (req, res) => {
         location_from: from_loc_n,
         location_to: to_loc_n,
         movement_transaction_num: txnNum,
-        tracking_number: ship.trackingNumber,
       };
 
       const inboundTx = {
         timestamp,
         sku: sku_n,
         product_name: productName,
-        shipment_id: ship.fbaShipmentId,
+        shipment_id: String(ship.trackingNumber || "").trim(),
+        "FBA ID": String(ship.fbaShipmentId || "").trim(),
         location: to_loc_n,
         type: "inbound",
         inbound_qty: qty_n,
@@ -199,7 +210,6 @@ router.post("/submit-bulk-fba", async (req, res) => {
         location_from: from_loc_n,
         location_to: to_loc_n,
         movement_transaction_num: txnNum,
-        tracking_number: ship.trackingNumber,
       };
 
       await transactionsCol.insertMany([outboundTx, inboundTx]);
@@ -213,9 +223,9 @@ router.post("/submit-bulk-fba", async (req, res) => {
           location_from: from_loc_n,
           location_to: to_loc_n,
           type: "sto",
-          shipment_id: ship.fbaShipmentId,
+          shipment_id: String(ship.trackingNumber || "").trim(),
+          "FBA ID": String(ship.fbaShipmentId || "").trim(),
           movement_transaction_num: txnNum,
-          tracking_number: ship.trackingNumber,
         },
       ]);
       mvDoc.delivery_locations = { from: from_loc_n, to: to_loc_n };

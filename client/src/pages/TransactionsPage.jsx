@@ -148,11 +148,15 @@ const TransactionsPage = () => {
           loc === amazon || locFrom === amazon || locTo === amazon;
         if (!isInvolved) return false;
 
-        const reasonIsIn = reason === "STO TRANSFER IN";
-        const reasonIsOut = reason === "STO TRANSFER OUT";
+        const isSto = t.sto === true || reason.includes("STO");
         const fromIsAmazon = locFrom === amazon;
+        const toIsAmazon = locTo === amazon;
 
-        return (reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon);
+        // FBA logic: An STO where To is Amazon (outbound perspective) or From is NOT Amazon but Loc is Amazon (inbound perspective)
+        // More simply: any STO where the destination is AMAZON or the source is AMAZON.
+        // We want to avoid double counting the same movement if we're just filtering the table,
+        // but here we are filtering the main list.
+        return isSto && (toIsAmazon || fromIsAmazon);
       });
     }
 
@@ -285,21 +289,17 @@ const TransactionsPage = () => {
   const getFbaTransactions = () => {
     const amazon = "AMAZON";
     return transactions.filter((t) => {
-      const loc = String(t.location || "").toUpperCase();
       const locFrom = String(t.location_from || "").toUpperCase();
       const locTo = String(t.location_to || "").toUpperCase();
       const reason = String(t.reason || "").toUpperCase();
 
-      const isInvolved =
-        loc === amazon || locFrom === amazon || locTo === amazon;
-      if (!isInvolved) return false;
+      const isSto = t.sto === true || reason.includes("STO");
+      const toIsAmazon = locTo === amazon;
 
-      const reasonIsIn = reason === "STO TRANSFER IN";
-      const reasonIsOut = reason === "STO TRANSFER OUT";
-      const fromIsAmazon = locFrom === amazon;
+      // Only count the outbound side to avoid double counting for charges
+      const isOutbound = String(t.type || "").toLowerCase() === "outbound";
 
-      const matchesFBARule =
-        (reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon);
+      const matchesFBARule = isSto && toIsAmazon && isOutbound;
       if (!matchesFBARule) return false;
 
       // Apply ALL active filters except showFBM and showFBA themselves
@@ -358,7 +358,8 @@ const TransactionsPage = () => {
         "Timestamp",
         "SKU",
         "Product Name",
-        "Shipment ID",
+        "FBA ID",
+        "Shipment ID (Tracking)",
         "Service",
         "Qty",
         "Unit Price",
@@ -382,6 +383,7 @@ const TransactionsPage = () => {
             `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
             `"${String(t.sku || "").replace(/"/g, '""')}"`,
             `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+            `="${String(t["FBA ID"] || "").replace(/"/g, '""')}"`,
             `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
             "FBM",
             qty,
@@ -394,17 +396,19 @@ const TransactionsPage = () => {
       // FBA Charges
       const fbaTransactions = getFbaTransactions();
       fbaTransactions.forEach((t) => {
-        const qty =
+        const rawQty =
           t.qty ||
           (String(t.type).toLowerCase() === "inbound"
             ? t.inbound_qty
             : -t.outbound_qty) ||
           0;
+        const qty = Math.abs(rawQty);
         const unitPrice = findPrice(t.sku, "FBA", t.timestamp);
         rows.push([
           `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
           `"${String(t.sku || "").replace(/"/g, '""')}"`,
           `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+          `="${String(t["FBA ID"] || "").replace(/"/g, '""')}"`,
           `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
           "FBA",
           qty,
@@ -462,12 +466,13 @@ const TransactionsPage = () => {
     // Use specific FBA logic for FBA Charge
     const fbaTransactions = getFbaTransactions();
     fbaTransactions.forEach((t) => {
-      const qty =
+      const rawQty =
         t.qty ||
         (String(t.type).toLowerCase() === "inbound"
           ? t.inbound_qty
           : -t.outbound_qty) ||
         0;
+      const qty = Math.abs(rawQty);
       fbaQty += qty;
       fbaTotal += qty * findPrice(t.sku, "FBA", t.timestamp);
     });
@@ -990,7 +995,10 @@ const TransactionsPage = () => {
                 Product Name
               </th>
               <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase">
-                Shipment ID
+                FBA ID
+              </th>
+              <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase">
+                Tracking (Shipment ID)
               </th>
               <th className="px-3 py-2 text-left font-medium text-gray-500 uppercase">
                 Trans Num
@@ -1020,6 +1028,9 @@ const TransactionsPage = () => {
                 </td>
                 <td className="px-3 py-2 max-w-[200px] truncate">
                   {t.product_name}
+                </td>
+                <td className="px-3 py-2 max-w-[150px] truncate">
+                  {t["FBA ID"]}
                 </td>
                 <td className="px-3 py-2 max-w-[150px] truncate">
                   {t.shipment_id}
