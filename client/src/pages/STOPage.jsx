@@ -292,12 +292,12 @@ const STOPage = () => {
     }
     if (fbaSessionLog.length === 0) return;
 
-    // Check for duplicate tracking in the current session log
-    const trackings = fbaSessionLog.map((s) =>
-      String(s.trackingNumber || "").trim(),
+    // Check for duplicate tracking in the current session log (space-insensitive)
+    const trackingsNormalized = fbaSessionLog.map((s) =>
+      String(s.trackingNumber || "").replace(/\s+/g, ""),
     );
-    const hasDuplicateInLog = trackings.some(
-      (t, index) => t !== "" && trackings.indexOf(t) !== index,
+    const hasDuplicateInLog = trackingsNormalized.some(
+      (t, index) => t !== "" && trackingsNormalized.indexOf(t) !== index,
     );
     if (hasDuplicateInLog) {
       setMessage({
@@ -307,17 +307,24 @@ const STOPage = () => {
       return;
     }
 
-    // Check if any tracking already exists in transaction history
+    // Check if any tracking already exists in transaction history (space-insensitive)
     // (This is also checked on the backend, but we check here for better UX)
     for (const ship of fbaSessionLog) {
-      const tracking = String(ship.trackingNumber || "").trim();
-      if (!tracking) continue;
+      const trackingNormalized = String(ship.trackingNumber || "").replace(
+        /\s+/g,
+        "",
+      );
+      if (!trackingNormalized) continue;
 
-      const exists = transactions.some((t) => t.shipment_id === tracking);
+      const exists = transactions.some(
+        (t) =>
+          String(t.shipment_id || "").replace(/\s+/g, "") ===
+          trackingNormalized,
+      );
       if (exists) {
         setMessage({
           type: "error",
-          text: `Tracking number ${tracking} has already been processed in a previous shipment.`,
+          text: `Tracking number ${ship.trackingNumber} has already been processed in a previous shipment.`,
         });
         return;
       }
@@ -891,13 +898,23 @@ const STOPage = () => {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200 text-sm">
                       {fbaSessionLog.map((row, idx) => {
+                        const rowTrackingNormalized = String(
+                          row.trackingNumber || "",
+                        ).replace(/\s+/g, "");
+
                         const isDuplicateInLog =
-                          row.trackingNumber &&
+                          rowTrackingNormalized &&
                           fbaSessionLog.filter(
-                            (s) => s.trackingNumber === row.trackingNumber,
+                            (s) =>
+                              String(s.trackingNumber || "").replace(
+                                /\s+/g,
+                                "",
+                              ) === rowTrackingNormalized,
                           ).length > 1;
                         const isDuplicateInHistory = transactions.some(
-                          (t) => t.shipment_id === row.trackingNumber,
+                          (t) =>
+                            String(t.shipment_id || "").replace(/\s+/g, "") ===
+                            rowTrackingNormalized,
                         );
                         const isDuplicate =
                           isDuplicateInLog || isDuplicateInHistory;

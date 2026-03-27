@@ -145,18 +145,30 @@ router.post("/submit-bulk-fba", async (req, res) => {
     const results = [];
 
     // Check for duplicate tracking numbers in the database before proceeding
+    // We remove all spaces for comparison as per user request
     const trackingNumbers = shipments
-      .map((s) => String(s.trackingNumber || "").trim())
+      .map((s) => String(s.trackingNumber || "").replace(/\s+/g, ""))
       .filter((t) => t !== "");
 
     if (trackingNumbers.length > 0) {
-      const existingTx = await transactionsCol.findOne({
-        shipment_id: { $in: trackingNumbers },
+      // Use $expr with $replaceAll to compare space-trimmed values in MongoDB
+      // Or more simply, since we might have many tracking numbers, we can fetch potential matches
+      // and do the space-insensitive comparison in JS, or use a regex-based approach.
+      // Given the requirement to trim spaces from the database side as well:
+      const potentialMatches = await transactionsCol
+        .find({
+          shipment_id: { $exists: true, $ne: "" },
+        })
+        .toArray();
+
+      const duplicate = potentialMatches.find((tx) => {
+        const dbTracking = String(tx.shipment_id || "").replace(/\s+/g, "");
+        return trackingNumbers.includes(dbTracking);
       });
 
-      if (existingTx) {
+      if (duplicate) {
         return res.status(400).json({
-          message: `Duplicate tracking number found: ${existingTx.shipment_id}. This shipment has already been processed.`,
+          message: `Duplicate tracking number found: ${duplicate.shipment_id}. This shipment has already been processed.`,
         });
       }
     }
@@ -280,12 +292,21 @@ router.post("/submit", async (req, res) => {
     // Note: Manual STO currently doesn't have a tracking field in the request,
     // but we add this for future-proofing and consistency.
     if (to_loc_n === "AMAZON" && req.body.shipment_id) {
-      const existingTx = await transactionsCol.findOne({
-        shipment_id: String(req.body.shipment_id).trim(),
+      const inputTracking = String(req.body.shipment_id).replace(/\s+/g, "");
+      const potentialMatches = await transactionsCol
+        .find({
+          shipment_id: { $exists: true, $ne: "" },
+        })
+        .toArray();
+
+      const duplicate = potentialMatches.find((tx) => {
+        const dbTracking = String(tx.shipment_id || "").replace(/\s+/g, "");
+        return dbTracking === inputTracking;
       });
-      if (existingTx) {
+
+      if (duplicate) {
         return res.status(400).json({
-          message: `Duplicate tracking number found: ${req.body.shipment_id}. This shipment has already been processed.`,
+          message: `Duplicate tracking number found: ${duplicate.shipment_id}. This shipment has already been processed.`,
         });
       }
     }
