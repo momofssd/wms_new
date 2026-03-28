@@ -108,6 +108,7 @@ router.get("/stats", async (req, res) => {
     const db = mongoose.connection.db;
     const transactionsCol = db.collection("transactions");
     const mmCol = db.collection("MM");
+    const pcCol = db.collection("price_conditions");
 
     // Fetch transactions
     const txList = await transactionsCol.find({}).toArray();
@@ -121,6 +122,21 @@ router.get("/stats", async (req, res) => {
         .filter((doc) => doc.active !== false)
         .map((doc) => String(doc.sku).trim().toUpperCase()),
     );
+
+    // Fetch price conditions
+    const priceConditions = await pcCol.find({}).toArray();
+
+    const findPrice = (sku, service, timestamp) => {
+      const ts = new Date(timestamp);
+      const condition = priceConditions.find((pc) => {
+        if (pc.sku !== sku || pc.service !== service) return false;
+        const from = new Date(pc.from_date);
+        const to = new Date(pc.to_date);
+        to.setHours(23, 59, 59, 999);
+        return ts >= from && ts <= to;
+      });
+      return condition ? condition.price : 0;
+    };
 
     const statsByWeek = {};
 
@@ -151,42 +167,43 @@ router.get("/stats", async (req, res) => {
         };
       }
 
-      const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
+      const rawQty = t.qty || t.inbound_qty || t.outbound_qty || 0;
+      const qty = Math.abs(rawQty);
       const type = String(t.type || "").toLowerCase();
       const loc = String(t.location || "").toUpperCase();
       const locFrom = String(t.location_from || "").toUpperCase();
       const locTo = String(t.location_to || "").toUpperCase();
       const reason = String(t.reason || "").toUpperCase();
 
-      // FBA Logic (matches TransactionsPage.jsx)
-      const isAmazon =
-        loc === "AMAZON" || locFrom === "AMAZON" || locTo === "AMAZON";
-      if (isAmazon) {
-        const reasonIsIn = reason === "STO TRANSFER IN";
-        const reasonIsOut = reason === "STO TRANSFER OUT";
-        const fromIsAmazon = locFrom === "AMAZON";
-        if ((reasonIsIn && !fromIsAmazon) || (reasonIsOut && fromIsAmazon)) {
-          statsByWeek[weekKey].fba += qty;
-          statsByWeek[weekKey].charge += qty * 0.5;
-        }
+      // FBA Logic (aligned with getFbaTransactions in TransactionsPage.jsx)
+      const amazon = "AMAZON";
+      const isSto =
+        t.sto === true || reason.includes("STO") || reason.includes("FBA");
+      const toIsAmazon = locTo === amazon || loc === amazon;
+      const isOutbound = type === "outbound";
+
+      // For FBA we count the outbound movement to Amazon
+      if (isSto && toIsAmazon && isOutbound) {
+        statsByWeek[weekKey].fba += qty;
+        const price = findPrice(t.sku, "FBA", t.timestamp);
+        statsByWeek[weekKey].charge += qty * price;
       }
 
-      // Fulfillment Logic (matches TransactionsPage.jsx)
-      const isOutbound = type === "outbound";
+      // Fulfillment Logic (aligned with FBM logic in TransactionsPage.jsx)
       const noToLoc =
         !t.location_to ||
         String(t.location_to).trim() === "" ||
         String(t.location_to).toLowerCase() === "none";
       if (isOutbound && noToLoc) {
         statsByWeek[weekKey].fulfillment += qty;
-        statsByWeek[weekKey].charge += qty * 2.0;
+        const price = findPrice(t.sku, "FBM", t.timestamp);
+        statsByWeek[weekKey].charge += qty * price;
       }
 
-      // Inbound Logic (matches TransactionsPage.jsx "Total Inbound" summary)
+      // Inbound Logic (aligned with "Total Inbound" summary in TransactionsPage.jsx)
       const isInbound = type === "inbound";
       const isLocAmazon = loc === "AMAZON";
-      const isSTO = reason.includes("STO");
-      if (isInbound && !isLocAmazon && !isSTO) {
+      if (isInbound && !isLocAmazon && !isSto) {
         statsByWeek[weekKey].inbound += qty;
       }
     });

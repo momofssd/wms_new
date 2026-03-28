@@ -40,6 +40,7 @@ const TransactionsPage = () => {
   const [typeOptions, setTypeOptions] = useState([]);
 
   const isAdmin = user?.role?.toLowerCase() === "admin";
+  const isUser = user?.role?.toLowerCase() === "user";
 
   useEffect(() => {
     fetchTransactions();
@@ -144,18 +145,11 @@ const TransactionsPage = () => {
         const locTo = String(t.location_to || "").toUpperCase();
         const reason = String(t.reason || "").toUpperCase();
 
-        const isInvolved =
-          loc === amazon || locFrom === amazon || locTo === amazon;
-        if (!isInvolved) return false;
-
-        const isSto = t.sto === true || reason.includes("STO");
+        const isSto =
+          t.sto === true || reason.includes("STO") || reason.includes("FBA");
+        const toIsAmazon = locTo === amazon || loc === amazon;
         const fromIsAmazon = locFrom === amazon;
-        const toIsAmazon = locTo === amazon;
 
-        // FBA logic: An STO where To is Amazon (outbound perspective) or From is NOT Amazon but Loc is Amazon (inbound perspective)
-        // More simply: any STO where the destination is AMAZON or the source is AMAZON.
-        // We want to avoid double counting the same movement if we're just filtering the table,
-        // but here we are filtering the main list.
         return isSto && (toIsAmazon || fromIsAmazon);
       });
     }
@@ -593,7 +587,7 @@ const TransactionsPage = () => {
           >
             {isExporting ? "⌛ Exporting..." : "📥 Download CSV"}
           </button>
-          {isAdmin && (
+          {!isUser && (
             <button
               onClick={handleDownloadChargesCSV}
               disabled={isExportingCharges}
@@ -862,7 +856,7 @@ const TransactionsPage = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        {isAdmin && (
+        {!isUser && (
           <div className="bg-white p-4 rounded shadow border text-center">
             <p className="text-xs text-gray-500 uppercase font-semibold">
               Total Charge

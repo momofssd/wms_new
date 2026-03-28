@@ -1,11 +1,12 @@
 import { Menu } from "lucide-react";
 import { useState } from "react";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import { useAuth } from "./context/AuthContext";
 
 const Layout = () => {
   const { user, loading } = useAuth();
+  const location = useLocation();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -19,6 +20,14 @@ const Layout = () => {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Role-based route protection for 'user' role
+  if (user?.role?.toLowerCase() === "user") {
+    const allowedPaths = ["/", "/transactions", "/movements"];
+    if (!allowedPaths.includes(location.pathname)) {
+      return <Navigate to="/" replace />;
+    }
   }
 
   return (

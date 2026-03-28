@@ -39,6 +39,7 @@ const Sidebar = ({
   const [backupMessage, setBackupMessage] = useState({ text: "", type: "" });
 
   const isCustomer = user?.role?.toLowerCase() === "customer";
+  const isUser = user?.role?.toLowerCase() === "user";
   const isAdmin = user?.role?.toLowerCase() === "admin";
 
   useEffect(() => {
@@ -62,19 +63,34 @@ const Sidebar = ({
       name: "Master Data",
       href: "/master-data",
       icon: Database,
-      hide: isCustomer,
+      hide: isCustomer || isUser,
     },
-    { name: "Inbound Entry", href: "/inbound", icon: LogIn, hide: isCustomer },
+    {
+      name: "Inbound Entry",
+      href: "/inbound",
+      icon: LogIn,
+      hide: isCustomer || isUser,
+    },
     {
       name: "Outbound Processing",
       href: "/outbound",
       icon: LogOut,
-      hide: isCustomer,
+      hide: isCustomer || isUser,
     },
-    { name: "STO", href: "/sto", icon: ArrowRightLeft, hide: isCustomer },
+    {
+      name: "STO",
+      href: "/sto",
+      icon: ArrowRightLeft,
+      hide: isCustomer || isUser,
+    },
     { name: "Transactions", href: "/transactions", icon: History },
     { name: "Movements", href: "/movements", icon: MapPin },
-    { name: "Shipment Tracking", href: "/shipment-tracking", icon: Truck },
+    {
+      name: "Shipment Tracking",
+      href: "/shipment-tracking",
+      icon: Truck,
+      hide: isUser,
+    },
   ];
 
   const closeMobileMenu = () => {
