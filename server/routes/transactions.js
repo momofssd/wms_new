@@ -108,7 +108,7 @@ router.get("/stats", async (req, res) => {
     const db = mongoose.connection.db;
     const transactionsCol = db.collection("transactions");
     const mmCol = db.collection("MM");
-    const pcCol = db.collection("price_conditions");
+    const priceCol = db.collection("price_under");
 
     // Fetch transactions
     const txList = await transactionsCol.find({}).toArray();
@@ -124,7 +124,7 @@ router.get("/stats", async (req, res) => {
     );
 
     // Fetch price conditions
-    const priceConditions = await pcCol.find({}).toArray();
+    const priceConditions = await priceCol.find({}).toArray();
 
     const findPrice = (sku, service, timestamp) => {
       const ts = new Date(timestamp);
