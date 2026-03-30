@@ -24,6 +24,12 @@ const STOPage = () => {
   const [fbaTotalTokens, setFbaTotalTokens] = useState(0);
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
 
+  // Pagination states
+  const [stoCurrentPage, setStoCurrentPage] = useState(1);
+  const [stoItemsPerPage, setStoItemsPerPage] = useState(25);
+  const [fbaCurrentPage, setFbaCurrentPage] = useState(1);
+  const [fbaItemsPerPage, setFbaItemsPerPage] = useState(25);
+
   // Re-fetch transactions whenever tab changes to ensure fresh data
   useEffect(() => {
     fetchTransactions();
@@ -613,6 +619,85 @@ const STOPage = () => {
 
           <div className="mt-12">
             <h2 className="text-xl font-bold mb-4">STO Transaction History</h2>
+
+            {/* Pagination Controls (Top) */}
+            <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 border rounded shadow gap-4 mb-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-700">
+                <span>Show</span>
+                <select
+                  value={stoItemsPerPage}
+                  onChange={(e) => {
+                    setStoItemsPerPage(Number(e.target.value));
+                    setStoCurrentPage(1);
+                  }}
+                  className="border rounded px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  {[10, 25, 50, 100, 250].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <span>items per page</span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setStoCurrentPage(1)}
+                  disabled={stoCurrentPage === 1}
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  First
+                </button>
+                <button
+                  onClick={() =>
+                    setStoCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
+                  disabled={stoCurrentPage === 1}
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Previous
+                </button>
+                <span className="text-sm font-medium text-gray-600 px-2">
+                  Page {stoCurrentPage} of{" "}
+                  {Math.ceil(transactions.length / stoItemsPerPage) || 1}
+                </span>
+                <button
+                  onClick={() =>
+                    setStoCurrentPage((prev) =>
+                      Math.min(
+                        prev + 1,
+                        Math.ceil(transactions.length / stoItemsPerPage),
+                      ),
+                    )
+                  }
+                  disabled={
+                    stoCurrentPage ===
+                      Math.ceil(transactions.length / stoItemsPerPage) ||
+                    transactions.length === 0
+                  }
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() =>
+                    setStoCurrentPage(
+                      Math.ceil(transactions.length / stoItemsPerPage),
+                    )
+                  }
+                  disabled={
+                    stoCurrentPage ===
+                      Math.ceil(transactions.length / stoItemsPerPage) ||
+                    transactions.length === 0
+                  }
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Last
+                </button>
+              </div>
+            </div>
+
             <div className="bg-white shadow border rounded overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -647,6 +732,10 @@ const STOPage = () => {
                   {[...transactions]
                     .sort(
                       (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+                    )
+                    .slice(
+                      (stoCurrentPage - 1) * stoItemsPerPage,
+                      stoCurrentPage * stoItemsPerPage,
                     )
                     .map((t, idx) => (
                       <tr key={idx}>
@@ -1110,6 +1199,151 @@ const STOPage = () => {
             <h2 className="text-xl font-bold mb-4 text-orange-700">
               Amazon FBA Shipments History
             </h2>
+
+            {/* Pagination Controls (Top) */}
+            <div className="flex flex-col sm:flex-row justify-between items-center bg-white p-4 border rounded shadow gap-4 mb-4">
+              <div className="flex items-center space-x-2 text-sm text-gray-700">
+                <span>Show</span>
+                <select
+                  value={fbaItemsPerPage}
+                  onChange={(e) => {
+                    setFbaItemsPerPage(Number(e.target.value));
+                    setFbaCurrentPage(1);
+                  }}
+                  className="border rounded px-2 py-1 focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  {[10, 25, 50, 100, 250].map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+                <span>items per page</span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setFbaCurrentPage(1)}
+                  disabled={fbaCurrentPage === 1}
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  First
+                </button>
+                <button
+                  onClick={() =>
+                    setFbaCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
+                  disabled={fbaCurrentPage === 1}
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Previous
+                </button>
+                <span className="text-sm font-medium text-gray-600 px-2">
+                  Page {fbaCurrentPage} of{" "}
+                  {Math.ceil(
+                    transactions.filter(
+                      (t) =>
+                        t.location !== "AMAZON" &&
+                        t.type === "outbound" &&
+                        (t.sto === true ||
+                          String(t.reason || "")
+                            .toUpperCase()
+                            .includes("FBA")),
+                    ).length / fbaItemsPerPage,
+                  ) || 1}
+                </span>
+                <button
+                  onClick={() =>
+                    setFbaCurrentPage((prev) =>
+                      Math.min(
+                        prev + 1,
+                        Math.ceil(
+                          transactions.filter(
+                            (t) =>
+                              t.location !== "AMAZON" &&
+                              t.type === "outbound" &&
+                              (t.sto === true ||
+                                String(t.reason || "")
+                                  .toUpperCase()
+                                  .includes("FBA")),
+                          ).length / fbaItemsPerPage,
+                        ),
+                      ),
+                    )
+                  }
+                  disabled={
+                    fbaCurrentPage ===
+                      Math.ceil(
+                        transactions.filter(
+                          (t) =>
+                            t.location !== "AMAZON" &&
+                            t.type === "outbound" &&
+                            (t.sto === true ||
+                              String(t.reason || "")
+                                .toUpperCase()
+                                .includes("FBA")),
+                        ).length / fbaItemsPerPage,
+                      ) ||
+                    transactions.filter(
+                      (t) =>
+                        t.location !== "AMAZON" &&
+                        t.type === "outbound" &&
+                        (t.sto === true ||
+                          String(t.reason || "")
+                            .toUpperCase()
+                            .includes("FBA")),
+                    ).length === 0
+                  }
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Next
+                </button>
+                <button
+                  onClick={() =>
+                    setFbaCurrentPage(
+                      Math.ceil(
+                        transactions.filter(
+                          (t) =>
+                            t.location !== "AMAZON" &&
+                            t.type === "outbound" &&
+                            (t.sto === true ||
+                              String(t.reason || "")
+                                .toUpperCase()
+                                .includes("FBA")),
+                        ).length / fbaItemsPerPage,
+                      ),
+                    )
+                  }
+                  disabled={
+                    fbaCurrentPage ===
+                      Math.ceil(
+                        transactions.filter(
+                          (t) =>
+                            t.location !== "AMAZON" &&
+                            t.type === "outbound" &&
+                            (t.sto === true ||
+                              String(t.reason || "")
+                                .toUpperCase()
+                                .includes("FBA")),
+                        ).length / fbaItemsPerPage,
+                      ) ||
+                    transactions.filter(
+                      (t) =>
+                        t.location !== "AMAZON" &&
+                        t.type === "outbound" &&
+                        (t.sto === true ||
+                          String(t.reason || "")
+                            .toUpperCase()
+                            .includes("FBA")),
+                    ).length === 0
+                  }
+                  className="px-3 py-1 border rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                >
+                  Last
+                </button>
+              </div>
+            </div>
+
             <div className="bg-white shadow border rounded overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -1153,6 +1387,10 @@ const STOPage = () => {
                     ) // FBA History from perspective of warehouse
                     .sort(
                       (a, b) => new Date(b.timestamp) - new Date(a.timestamp),
+                    )
+                    .slice(
+                      (fbaCurrentPage - 1) * fbaItemsPerPage,
+                      fbaCurrentPage * fbaItemsPerPage,
                     )
                     .map((t, idx) => (
                       <tr key={idx}>
