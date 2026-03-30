@@ -46,7 +46,7 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
     const base64Pdf = pdfBuffer.toString("base64");
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
-    const modelName = "gemini-2.5-flash-lite";
+    const modelName = "gemini-3.1-flash-lite-preview";
 
     // Using EXACTLY Gemini 3.0 Flash with JSON Mode and Safety Filters off
     const model = genAI.getGenerativeModel({
@@ -84,7 +84,7 @@ You MUST return a JSON array of objects. Each object must represent a box and co
 - "boxNumber" (string, e.g., "Box 1")
 - "fbaShipmentId" (string)
 - "sku" (string, always "${selectedSku}")
-- "quantity" (number, default to 18 if not found, or 0)
+- "quantity" (quantity is found in FBA label labled as "qty")
 - "trackingNumber" (string)
 - "weight" (string, e.g., "28 LBS")`;
 
