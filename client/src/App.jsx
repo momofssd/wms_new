@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import MasterDataPage from "./pages/MasterDataPage";
 import MovementsPage from "./pages/MovementsPage";
 import OutboundPage from "./pages/OutboundPage";
+import ReturnPage from "./pages/ReturnPage";
 import ShipmentTrackingPage from "./pages/ShipmentTrackingPage";
 import STOPage from "./pages/STOPage";
 import TransactionsPage from "./pages/TransactionsPage";
@@ -25,6 +26,7 @@ function App() {
             <Route index element={<HomePage />} />
             <Route path="master-data" element={<MasterDataPage />} />
             <Route path="inbound" element={<InboundPage />} />
+            <Route path="return" element={<ReturnPage />} />
             <Route path="movements" element={<MovementsPage />} />
             <Route path="outbound" element={<OutboundPage />} />
             <Route path="sto" element={<STOPage />} />

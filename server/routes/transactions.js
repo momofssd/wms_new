@@ -26,12 +26,15 @@ router.get("/", async (req, res) => {
         .map((doc) => String(doc.sku).trim().toUpperCase()),
     );
 
-    // Filter by active SKUs
+    // Filter by active SKUs, but include returns even if not in master data
     const filteredTxList = txList.filter((tx) => {
       const sku = String(tx.sku || "")
         .trim()
         .toUpperCase();
-      return activeSkus.has(sku);
+      if (activeSkus.has(sku)) return true;
+      // If it's a return, show it.
+      if (String(tx.type).toLowerCase() === "return") return true;
+      return false;
     });
 
     res.json(filteredTxList);

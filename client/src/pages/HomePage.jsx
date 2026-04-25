@@ -38,8 +38,23 @@ const HomePage = () => {
 
       setLocations(locs);
       setSkus(items);
-      setSelectedLocations(locs);
-      setSelectedSkus(items);
+
+      // Initialize selected locations if empty
+      setSelectedLocations((prev) => {
+        if (prev.length === 0) return locs;
+        // Keep existing selections but add any new locations found
+        const combined = [...new Set([...prev, ...locs])];
+        return combined;
+      });
+
+      // Initialize selected SKUs if empty
+      setSelectedSkus((prev) => {
+        if (prev.length === 0) return items;
+        // Keep existing selections but add any new SKUs found
+        const combined = [...new Set([...prev, ...items])];
+        return combined;
+      });
+
       setFilteredInventory(sortedData);
       setLoading(false);
     } catch (err) {

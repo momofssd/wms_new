@@ -180,9 +180,17 @@ router.post("/submit-bulk-fba", async (req, res) => {
       if (!sku_n || isNaN(qty_n) || qty_n <= 0) continue;
 
       const mmDoc = await mmCol.findOne({ sku: sku_n });
-      if (!mmDoc) continue;
+      if (mmDoc && mmDoc.active === false) {
+        continue;
+      }
 
-      const productName = String(mmDoc.product_name || mmDoc.name || "")
+      const invDoc = await inventoryCol.findOne({
+        sku: sku_n,
+        location: from_loc_n,
+      });
+      const productName = String(
+        invDoc?.product_name || mmDoc?.product_name || mmDoc?.name || "RETURN",
+      )
         .trim()
         .toUpperCase();
 
@@ -312,16 +320,17 @@ router.post("/submit", async (req, res) => {
     }
 
     const mmDoc = await mmCol.findOne({ sku: sku_n });
-    if (!mmDoc) {
-      return res
-        .status(400)
-        .json({ message: `SKU ${sku_n} not found in Material Master` });
-    }
-    if (mmDoc.active === false) {
+    if (mmDoc && mmDoc.active === false) {
       return res.status(400).json({ message: `SKU ${sku_n} is deactivated` });
     }
 
-    const productName = String(mmDoc.product_name || mmDoc.name || "")
+    const invDoc = await inventoryCol.findOne({
+      sku: sku_n,
+      location: from_loc_n,
+    });
+    const productName = String(
+      invDoc?.product_name || mmDoc?.product_name || mmDoc?.name || "RETURN",
+    )
       .trim()
       .toUpperCase();
 

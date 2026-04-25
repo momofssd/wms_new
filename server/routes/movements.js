@@ -55,11 +55,13 @@ router.get("/", async (req, res) => {
     // Also drop movements that *had* details originally but end up with zero active details.
     const filteredMvList = mvList
       .map((mv) => {
+        const isReturn = String(mv.movement_type).toLowerCase() === "return";
         const hadDetails = Array.isArray(mv.details) && mv.details.length > 0;
         const nextDetails = Array.isArray(mv.details)
-          ? mv.details.filter((detail) =>
-              activeSkus.has(normalizeSku(detail.sku)),
-            )
+          ? mv.details.filter((detail) => {
+              if (isReturn) return true; // Always show details for returns
+              return activeSkus.has(normalizeSku(detail.sku));
+            })
           : mv.details;
 
         return { ...mv, details: nextDetails, __hadDetails: hadDetails };
@@ -104,6 +106,14 @@ router.delete("/:txnNum", async (req, res) => {
 
       if (movementType === "inbound") {
         const qty = parseInt(detail.inbound_qty || 0);
+        if (qty > 0) {
+          await inventoryCol.updateOne(
+            { sku, location },
+            { $inc: { quantity: -qty } },
+          );
+        }
+      } else if (movementType === "return") {
+        const qty = parseInt(detail.qty || detail.inbound_qty || 0);
         if (qty > 0) {
           await inventoryCol.updateOne(
             { sku, location },

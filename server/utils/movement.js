@@ -112,6 +112,49 @@ const getNextInboundTransactionNum = async () => {
   return String(nxtInt).padStart(6, "0");
 };
 
+const getNextReturnTransactionNum = async () => {
+  const db = mongoose.connection.db;
+  const movementCol = db.collection("movement");
+  const counters = db.collection("counters");
+
+  let base = 500000;
+  try {
+    const docs = await movementCol
+      .find({
+        movement_type: "return",
+        transaction_num: { $regex: /^\d+$/ },
+      })
+      .sort({ transaction_num: -1 })
+      .limit(200)
+      .toArray();
+
+    for (const d of docs) {
+      const s = String(d.transaction_num).trim();
+      const v = parseInt(s);
+      if (v >= base && v < 600000) {
+        base = Math.max(base, v);
+      }
+    }
+  } catch (err) {}
+
+  await counters.updateOne(
+    { _id: "return_transaction_num" },
+    { $setOnInsert: { seq: base } },
+    { upsert: true },
+  );
+
+  const updated = await counters.findOneAndUpdate(
+    { _id: "return_transaction_num" },
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true },
+  );
+
+  let nxtInt = updated.seq || base + 1;
+  if (nxtInt < 500000) nxtInt = 500000;
+  if (nxtInt >= 600000) nxtInt = 599999;
+  return String(nxtInt).padStart(6, "0");
+};
+
 const buildMovementDoc = (
   movementType,
   transactionNum,
@@ -149,6 +192,7 @@ const buildMovementDoc = (
 
 module.exports = {
   getNextInboundTransactionNum,
+  getNextReturnTransactionNum,
   getNextOutboundTransactionNum,
   getNextSTOTransactionNum,
   buildMovementDoc,

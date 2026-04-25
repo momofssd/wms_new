@@ -32,16 +32,6 @@ router.post("/validate-scan", async (req, res) => {
     const mmCol = db.collection("MM");
     const inventoryCol = db.collection("inventory");
 
-    const mmDoc = await mmCol.findOne({ sku: sku.trim().toUpperCase() });
-    if (!mmDoc) {
-      return res
-        .status(400)
-        .json({ message: `SKU ${sku} not found in Material Master` });
-    }
-    if (mmDoc.active === false) {
-      return res.status(400).json({ message: `SKU ${sku} is deactivated` });
-    }
-
     const invDoc = await inventoryCol.findOne({
       sku: sku.trim().toUpperCase(),
       location: location.trim().toUpperCase(),
@@ -53,10 +43,15 @@ router.post("/validate-scan", async (req, res) => {
         .json({ message: `SKU ${sku} out of stock at ${location}` });
     }
 
+    const mmDoc = await mmCol.findOne({ sku: sku.trim().toUpperCase() });
+    if (mmDoc && mmDoc.active === false) {
+      return res.status(400).json({ message: `SKU ${sku} is deactivated` });
+    }
+
     res.json({
       success: true,
       product_name: String(
-        invDoc.product_name || mmDoc.product_name || mmDoc.name || "",
+        invDoc.product_name || mmDoc?.product_name || mmDoc?.name || "",
       )
         .trim()
         .toUpperCase(),
@@ -102,6 +97,7 @@ router.post("/confirm-session", async (req, res) => {
     const db = mongoose.connection.db;
     const inventoryCol = db.collection("inventory");
     const transactionsCol = db.collection("transactions");
+    const mmCol = db.collection("MM");
     const movementCol = db.collection("movement");
 
     if (!pending || pending.length === 0) {
@@ -130,19 +126,32 @@ router.post("/confirm-session", async (req, res) => {
     const shipFromLoc = String(pending[0].location).trim().toUpperCase();
     let totalQty = 0;
 
-    const transactions = pending.map((p) => {
-      const qty = parseInt(p.outbound_qty || 1);
-      totalQty += qty;
-      return {
-        ...p,
-        timestamp: new Date(p.timestamp),
-        sku: p.sku.trim().toUpperCase(),
-        location: p.location.trim().toUpperCase(),
-        type: "outbound",
-        outbound_qty: qty,
-        movement_transaction_num: txnNum,
-      };
-    });
+    const transactions = await Promise.all(
+      pending.map(async (p) => {
+        const invDoc = await inventoryCol.findOne({
+          sku: p.sku.trim().toUpperCase(),
+          location: p.location.trim().toUpperCase(),
+        });
+        const mmDoc = await mmCol.findOne({ sku: p.sku.trim().toUpperCase() });
+        const productName = String(
+          invDoc?.product_name || mmDoc?.product_name || mmDoc?.name || "",
+        )
+          .trim()
+          .toUpperCase();
+        const qty = parseInt(p.outbound_qty || 1);
+        totalQty += qty;
+        return {
+          ...p,
+          timestamp: new Date(p.timestamp),
+          sku: p.sku.trim().toUpperCase(),
+          location: p.location.trim().toUpperCase(),
+          product_name: productName,
+          type: "outbound",
+          outbound_qty: qty,
+          movement_transaction_num: txnNum,
+        };
+      }),
+    );
 
     await transactionsCol.insertMany(transactions);
 

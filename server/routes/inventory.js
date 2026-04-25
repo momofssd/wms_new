@@ -22,10 +22,18 @@ router.get("/", async (req, res) => {
         .map((doc) => String(doc.sku).trim().toUpperCase()),
     );
 
-    // Filter inventory by active SKUs
-    inventory = inventory.filter((item) =>
-      activeSkus.has(String(item.sku).trim().toUpperCase()),
-    );
+    // Filter inventory by active SKUs, but allow "RETURN" product names or explicit return types
+    // Actually, if it's in inventory, we should probably show it unless explicitly deactivated in MM.
+    inventory = inventory.filter((item) => {
+      const sku = String(item.sku).trim().toUpperCase();
+      // If SKU is in MM and it's deactivated, hide it.
+      // If SKU is NOT in MM, it might be a return, so we show it.
+      const mmDoc = activeSkusDocs.find(
+        (d) => String(d.sku).trim().toUpperCase() === sku,
+      );
+      if (mmDoc && mmDoc.active === false) return false;
+      return true;
+    });
 
     res.json(inventory);
   } catch (err) {

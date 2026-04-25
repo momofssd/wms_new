@@ -10,6 +10,7 @@ import {
   LogOut,
   MapPin,
   Truck,
+  Undo2,
   Volume2,
   VolumeX,
   X,
@@ -69,6 +70,12 @@ const Sidebar = ({
       name: "Inbound Entry",
       href: "/inbound",
       icon: LogIn,
+      hide: isCustomer || isUser,
+    },
+    {
+      name: "Return",
+      href: "/return",
+      icon: Undo2,
       hide: isCustomer || isUser,
     },
     {

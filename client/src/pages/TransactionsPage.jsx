@@ -274,7 +274,10 @@ const TransactionsPage = () => {
         `="${String(t.movement_transaction_num || "").replace(/"/g, '""')}"`,
         `"${String(t.location || "").replace(/"/g, '""')}"`,
         `"${String(t.type || "").replace(/"/g, '""')}"`,
-        t.qty || (t.type === "inbound" ? t.inbound_qty : -t.outbound_qty),
+        t.qty ||
+          (t.type === "inbound" || t.type === "return"
+            ? t.inbound_qty || t.qty
+            : -t.outbound_qty),
         `"${String(t.reason || "").replace(/"/g, '""')}"`,
       ]);
 
@@ -924,10 +927,11 @@ const TransactionsPage = () => {
           <p className="text-2xl font-bold text-orange-600">
             {filteredTransactions
               .reduce((acc, curr) => {
+                const type = String(curr.type).toLowerCase();
                 const qty =
                   curr.qty ||
-                  (String(curr.type).toLowerCase() === "inbound"
-                    ? curr.inbound_qty
+                  (type === "inbound" || type === "return"
+                    ? curr.inbound_qty || curr.qty
                     : -curr.outbound_qty) ||
                   0;
                 return acc + qty;
@@ -1100,13 +1104,13 @@ const TransactionsPage = () => {
                       {t.location}
                     </td>
                     <td
-                      className={`px-3 py-2 whitespace-nowrap capitalize font-medium ${t.type === "inbound" ? "text-green-600" : "text-orange-600"}`}
+                      className={`px-3 py-2 whitespace-nowrap capitalize font-medium ${t.type === "inbound" ? "text-green-600" : t.type === "return" ? "text-blue-600" : "text-orange-600"}`}
                     >
                       {t.type}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap font-bold">
                       {t.qty ||
-                        (t.type === "inbound"
+                        (t.type === "inbound" || t.type === "return"
                           ? t.inbound_qty
                           : -t.outbound_qty)}
                     </td>

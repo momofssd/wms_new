@@ -77,12 +77,33 @@ const STOPage = () => {
 
   const fetchSkus = async () => {
     try {
-      const res = await api.get("/master-data/materials");
-      setSkus(
-        res.data
-          .filter((m) => m.active)
-          .sort((a, b) => a.sku.localeCompare(b.sku)),
-      );
+      const [materialsRes, inventoryRes] = await Promise.all([
+        api.get("/master-data/materials"),
+        api.get("/inventory"),
+      ]);
+
+      const activeMaterials = materialsRes.data.filter((m) => m.active);
+      const inventorySkus = inventoryRes.data.map((i) => ({
+        sku: i.sku,
+        product_name: i.product_name || "RETURN",
+      }));
+      const combined = [...activeMaterials, ...inventorySkus];
+      const uniq = new Map();
+      combined.forEach((item) => {
+        const sku = String(item.sku || "")
+          .trim()
+          .toUpperCase();
+        if (!sku) return;
+        if (!uniq.has(sku)) {
+          uniq.set(sku, {
+            sku,
+            product_name: String(item.product_name || "RETURN")
+              .trim()
+              .toUpperCase(),
+          });
+        }
+      });
+      setSkus([...uniq.values()].sort((a, b) => a.sku.localeCompare(b.sku)));
     } catch (err) {
       console.error("Error fetching skus", err);
     }
