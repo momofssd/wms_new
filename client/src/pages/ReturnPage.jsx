@@ -59,7 +59,11 @@ const ReturnPage = () => {
   const fetchLocations = async () => {
     try {
       const res = await api.get("/master-data/locations");
-      setLocations(res.data.filter((l) => l.active).map((l) => l.location));
+      setLocations(
+        res.data
+          .filter((l) => l.active && l.location !== "AMAZON")
+          .map((l) => l.location),
+      );
     } catch (err) {
       console.error("Error fetching locations", err);
     }
