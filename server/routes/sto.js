@@ -29,7 +29,7 @@ const upload = multer({
 // Reverting to single file upload. The frontend will loop and call this one-by-one.
 router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
   try {
-    console.log("PDF processing request received. SKU:", req.body.selectedSku);
+    console.log("PDF processing request received.");
 
     if (!req.file) {
       return res.status(400).json({ message: "No PDF file uploaded" });
@@ -41,7 +41,6 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
         .json({ message: "Server misconfiguration: Missing AI API key." });
     }
 
-    const { selectedSku } = req.body;
     const pdfBuffer = req.file.buffer;
     const base64Pdf = pdfBuffer.toString("base64");
 
@@ -76,14 +75,11 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
 
     const prompt = `Analyze the attached PDF. The document consists of pairs: every odd-numbered page is an Amazon FBA label and every even-numbered page is the corresponding UPS shipping label for the same box (e.g., Page 1 is Box 1 FBA, Page 2 is Box 1 UPS).
 
-Extract the FBA Shipment ID, UPS Tracking Number, and Weight for each box, moving sequentially through the document. 
-
-IMPORTANT: The SKU for all boxes in this document MUST be "${selectedSku}". 
+Extract the FBA Shipment ID, UPS Tracking Number, and Weight for each box, moving sequentially through the document.
 
 You MUST return a JSON array of objects. Each object must represent a box and contain exactly these keys:
 - "boxNumber" (string, e.g., "Box 1")
 - "fbaShipmentId" (string)
-- "sku" (string, always "${selectedSku}")
 - "quantity" (quantity is found in FBA label labled as "qty")
 - "trackingNumber" (string)
 - "weight" (string, e.g., "28 LBS")`;
@@ -174,101 +170,137 @@ router.post("/submit-bulk-fba", async (req, res) => {
     }
 
     for (const ship of shipments) {
-      const sku_n = String(ship.sku).trim().toUpperCase();
-      const qty_n = parseInt(ship.quantity);
+      try {
+        const sku_n = String(ship.sku).trim().toUpperCase();
+        const qty_n = parseInt(ship.quantity);
 
-      if (!sku_n || isNaN(qty_n) || qty_n <= 0) continue;
+        console.log(
+          `[FBA] Processing shipment for SKU: ${sku_n}, Qty: ${qty_n}`,
+        );
 
-      const mmDoc = await mmCol.findOne({ sku: sku_n });
-      if (mmDoc && mmDoc.active === false) {
-        continue;
-      }
+        if (!sku_n || isNaN(qty_n) || qty_n <= 0) {
+          console.log(
+            `[FBA] Skipping invalid SKU or quantity: ${sku_n}, ${qty_n}`,
+          );
+          continue;
+        }
 
-      const invDoc = await inventoryCol.findOne({
-        sku: sku_n,
-        location: from_loc_n,
-      });
-      const productName = String(
-        invDoc?.product_name || mmDoc?.product_name || mmDoc?.name || "RETURN",
-      )
-        .trim()
-        .toUpperCase();
+        const mmDoc = await mmCol.findOne({ sku: sku_n });
+        if (mmDoc && mmDoc.active === false) {
+          console.log(`[FBA] Skipping inactive SKU: ${sku_n}`);
+          continue;
+        }
 
-      const updateResult = await inventoryCol.updateOne(
-        { sku: sku_n, location: from_loc_n, quantity: { $gte: qty_n } },
-        { $inc: { quantity: -qty_n } },
-      );
+        const invDoc = await inventoryCol.findOne({
+          sku: sku_n,
+          location: from_loc_n,
+        });
+        const productName = String(
+          invDoc?.product_name ||
+            mmDoc?.product_name ||
+            mmDoc?.name ||
+            "RETURN",
+        )
+          .trim()
+          .toUpperCase();
 
-      if (updateResult.modifiedCount === 0) continue;
+        console.log(`[FBA] Updating inventory for ${sku_n} at ${from_loc_n}`);
+        const updateResult = await inventoryCol.updateOne(
+          { sku: sku_n, location: from_loc_n, quantity: { $gte: qty_n } },
+          { $inc: { quantity: -qty_n } },
+        );
 
-      await inventoryCol.updateOne(
-        { sku: sku_n, location: to_loc_n },
-        {
-          $set: { product_name: productName },
-          $inc: { quantity: qty_n },
-        },
-        { upsert: true },
-      );
+        if (updateResult.modifiedCount === 0) {
+          console.log(`[FBA] Insufficient stock for ${sku_n} at ${from_loc_n}`);
+          continue;
+        }
 
-      const txnNum = await getNextSTOTransactionNum();
+        console.log(
+          `[FBA] Inventory deducted successfully. Adding to AMAZON location.`,
+        );
+        await inventoryCol.updateOne(
+          { sku: sku_n, location: to_loc_n },
+          {
+            $set: { product_name: productName },
+            $inc: { quantity: qty_n },
+          },
+          { upsert: true },
+        );
 
-      // Mapping rules:
-      // shipment_id = trackingNumber
-      // FBA ID = fbaShipmentId
-      // tracking_number = DELETE/REMOVE
+        const txnNum = await getNextSTOTransactionNum();
+        console.log(`[FBA] Generated transaction number: ${txnNum}`);
 
-      const outboundTx = {
-        timestamp,
-        sku: sku_n,
-        product_name: productName,
-        shipment_id: String(ship.trackingNumber || "").trim(),
-        "FBA ID": String(ship.fbaShipmentId || "").trim(),
-        location: from_loc_n,
-        type: "outbound",
-        outbound_qty: qty_n,
-        reason: "FBA Shipment out (PDF)",
-        sto: true,
-        location_from: from_loc_n,
-        location_to: to_loc_n,
-        movement_transaction_num: txnNum,
-      };
+        // Mapping rules:
+        // shipment_id = trackingNumber
+        // FBA ID = fbaShipmentId
+        // tracking_number = DELETE/REMOVE
 
-      const inboundTx = {
-        timestamp,
-        sku: sku_n,
-        product_name: productName,
-        shipment_id: String(ship.trackingNumber || "").trim(),
-        "FBA ID": String(ship.fbaShipmentId || "").trim(),
-        location: to_loc_n,
-        type: "inbound",
-        inbound_qty: qty_n,
-        reason: "FBA Shipment in (PDF)",
-        sto: true,
-        location_from: from_loc_n,
-        location_to: to_loc_n,
-        movement_transaction_num: txnNum,
-      };
-
-      await transactionsCol.insertMany([outboundTx, inboundTx]);
-
-      const mvDoc = buildMovementDoc("sto", txnNum, qty_n, from_loc_n, [
-        {
+        const outboundTx = {
           timestamp,
           sku: sku_n,
           product_name: productName,
-          qty: qty_n,
-          location_from: from_loc_n,
-          location_to: to_loc_n,
-          type: "sto",
           shipment_id: String(ship.trackingNumber || "").trim(),
           "FBA ID": String(ship.fbaShipmentId || "").trim(),
+          location: from_loc_n,
+          type: "outbound",
+          outbound_qty: qty_n,
+          reason: "FBA Shipment out (PDF)",
+          sto: true,
+          location_from: from_loc_n,
+          location_to: to_loc_n,
           movement_transaction_num: txnNum,
-        },
-      ]);
-      mvDoc.delivery_locations = { from: from_loc_n, to: to_loc_n };
+        };
 
-      await movementCol.insertOne(mvDoc);
-      results.push({ sku: sku_n, txnNum });
+        const inboundTx = {
+          timestamp,
+          sku: sku_n,
+          product_name: productName,
+          shipment_id: String(ship.trackingNumber || "").trim(),
+          "FBA ID": String(ship.fbaShipmentId || "").trim(),
+          location: to_loc_n,
+          type: "inbound",
+          inbound_qty: qty_n,
+          reason: "FBA Shipment in (PDF)",
+          sto: true,
+          location_from: from_loc_n,
+          location_to: to_loc_n,
+          movement_transaction_num: txnNum,
+        };
+
+        console.log(`[FBA] Inserting transactions for ${sku_n}`);
+        await transactionsCol.insertMany([outboundTx, inboundTx]);
+
+        const mvDoc = buildMovementDoc("sto", txnNum, qty_n, from_loc_n, [
+          {
+            timestamp,
+            sku: sku_n,
+            product_name: productName,
+            qty: qty_n,
+            location_from: from_loc_n,
+            location_to: to_loc_n,
+            type: "sto",
+            shipment_id: String(ship.trackingNumber || "").trim(),
+            "FBA ID": String(ship.fbaShipmentId || "").trim(),
+            movement_transaction_num: txnNum,
+          },
+        ]);
+        mvDoc.delivery_locations = { from: from_loc_n, to: to_loc_n };
+
+        console.log(`[FBA] Inserting movement record for ${sku_n}`);
+        await movementCol.insertOne(mvDoc);
+
+        console.log(
+          `[FBA] Successfully processed ${sku_n} with txnNum ${txnNum}`,
+        );
+        results.push({ sku: sku_n, txnNum });
+      } catch (shipError) {
+        console.error(
+          `[FBA] Error processing shipment for SKU ${ship.sku}:`,
+          shipError,
+        );
+        // Continue processing other shipments even if one fails
+        continue;
+      }
     }
 
     res.json({

@@ -34,6 +34,7 @@ router.get("/", async (req, res) => {
       if (activeSkus.has(sku)) return true;
       // If it's a return, show it.
       if (String(tx.type).toLowerCase() === "return") return true;
+      if (String(tx.product_name || "").toUpperCase() === "RETURN") return true;
       return false;
     });
 

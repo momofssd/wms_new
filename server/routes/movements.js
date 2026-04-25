@@ -60,6 +60,8 @@ router.get("/", async (req, res) => {
         const nextDetails = Array.isArray(mv.details)
           ? mv.details.filter((detail) => {
               if (isReturn) return true; // Always show details for returns
+              if (String(detail.product_name || "").toUpperCase() === "RETURN")
+                return true; // Show return SKUs even in STO
               return activeSkus.has(normalizeSku(detail.sku));
             })
           : mv.details;

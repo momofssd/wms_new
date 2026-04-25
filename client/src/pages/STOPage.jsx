@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
@@ -23,6 +23,10 @@ const STOPage = () => {
   const [fbaSessionLog, setFbaSessionLog] = useState([]);
   const [fbaTotalTokens, setFbaTotalTokens] = useState(0);
   const [isProcessingPdf, setIsProcessingPdf] = useState(false);
+  const [fbaSkuQueue, setFbaSkuQueue] = useState([]);
+  const [queueSku, setQueueSku] = useState("");
+  const [fbaRawBoxes, setFbaRawBoxes] = useState([]);
+  const [queueError, setQueueError] = useState("");
 
   // Pagination states
   const [stoCurrentPage, setStoCurrentPage] = useState(1);
@@ -60,6 +64,103 @@ const STOPage = () => {
       setAvailable(0);
     }
   }, [selectedSku, fromLoc, inventory]);
+
+  const totalBoxQty = useMemo(
+    () => fbaRawBoxes.reduce((acc, curr) => acc + (curr.quantity || 0), 0),
+    [fbaRawBoxes],
+  );
+
+  const getAvailableQty = (sku) => {
+    if (!sku || !fromLoc) return 0;
+    const item = inventory.find((i) => i.sku === sku && i.location === fromLoc);
+    return item ? item.quantity || 0 : 0;
+  };
+
+  const assignQueueToBoxes = (queue, boxes) => {
+    if (queue.length === 0) {
+      return {
+        error: "Add SKUs to the queue to assign PDF quantities.",
+        assigned: [],
+      };
+    }
+
+    let queueIdx = 0;
+    const assigned = [];
+
+    // Track the remaining available qty for each SKU in the queue
+    const skuRemaining = new Map();
+    for (const sku of queue) {
+      if (!skuRemaining.has(sku)) {
+        skuRemaining.set(sku, getAvailableQty(sku));
+      }
+    }
+
+    for (const box of boxes) {
+      let boxQtyToFulfill = Number(box.quantity) || 0;
+      if (boxQtyToFulfill <= 0) continue;
+
+      // Fulfill boxQtyToFulfill using the SKUs in the queue sequentially,
+      // splitting the box quantity across multiple SKUs if necessary.
+      while (boxQtyToFulfill > 0 && queueIdx < queue.length) {
+        const currentSku = queue[queueIdx];
+        const remaining = skuRemaining.get(currentSku) || 0;
+
+        if (remaining > 0) {
+          // How much can we take from this SKU?
+          const takeQty = Math.min(boxQtyToFulfill, remaining);
+
+          assigned.push({
+            ...box,
+            sku: currentSku,
+            quantity: takeQty,
+          });
+
+          skuRemaining.set(currentSku, remaining - takeQty);
+          boxQtyToFulfill -= takeQty;
+
+          // If this SKU is now exhausted, move to the next SKU in the queue
+          if (remaining - takeQty === 0) {
+            queueIdx++;
+          }
+        } else {
+          // This SKU is already exhausted
+          queueIdx++;
+        }
+      }
+
+      if (boxQtyToFulfill > 0) {
+        return {
+          error: `Not enough inventory in the queued SKUs to fulfill all boxes. Please add more SKUs or check inventory.`,
+          assigned: [],
+        };
+      }
+    }
+
+    return { assigned, error: "" };
+  };
+
+  useEffect(() => {
+    if (fbaRawBoxes.length === 0) {
+      setFbaSessionLog([]);
+      setQueueError("");
+      return;
+    }
+    if (fbaSkuQueue.length === 0) {
+      setFbaSessionLog([]);
+      setQueueError("Add a SKU queue to assign PDF quantities.");
+      return;
+    }
+
+    const { assigned, error } = assignQueueToBoxes(fbaSkuQueue, fbaRawBoxes);
+    if (error) {
+      setQueueError(error);
+      setFbaSessionLog([]);
+      return;
+    }
+
+    setQueueError("");
+    setFbaSessionLog(assigned);
+  }, [fbaRawBoxes, fbaSkuQueue]);
 
   const fetchLocations = async () => {
     try {
@@ -205,8 +306,12 @@ const STOPage = () => {
     setPreview(null);
     setCompletion(null);
     setMessage({ type: "", text: "" });
-    setFbaFile(null);
+    setFbaFiles([]);
     setFbaSessionLog([]);
+    setFbaRawBoxes([]);
+    setFbaSkuQueue([]);
+    setQueueSku("");
+    setQueueError("");
   };
 
   const handleFileChange = (e) => {
@@ -230,10 +335,10 @@ const STOPage = () => {
       });
       return;
     }
-    if (!selectedSku) {
+    if (!fromLoc) {
       setMessage({
         type: "error",
-        text: "Please select a SKU first. It is required for the shipment.",
+        text: "Please select a From Location first.",
       });
       return;
     }
@@ -250,8 +355,6 @@ const STOPage = () => {
       for (const file of fbaFiles) {
         const formData = new FormData();
         formData.append("pdf", file); // Backend expects "pdf"
-        formData.append("selectedSku", selectedSku);
-
         const res = await api.post("/sto/process-fba-pdf", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         });
@@ -266,7 +369,7 @@ const STOPage = () => {
         });
       }
 
-      setFbaSessionLog(allResults);
+      setFbaRawBoxes(allResults);
       setFbaTotalTokens(accumulatedTokens);
       setMessage({
         type: "success",
@@ -300,12 +403,32 @@ const STOPage = () => {
     setFbaSessionLog(reindexedLog);
   };
 
+  const handleAddQueueItem = () => {
+    const sku = String(queueSku || "")
+      .trim()
+      .toUpperCase();
+    if (!sku) {
+      setQueueError("Select a SKU to add to the queue.");
+      return;
+    }
+    setQueueError("");
+    setFbaSkuQueue((prev) => [...prev, sku]);
+    setQueueSku("");
+  };
+
+  const handleRemoveQueueItem = (index) => {
+    setFbaSkuQueue((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const handleResetFba = () => {
-    setSelectedSku("");
     setFromLoc("");
     setFbaFiles([]);
     setFbaSessionLog([]);
+    setFbaRawBoxes([]);
+    setFbaSkuQueue([]);
+    setQueueSku("");
     setFbaTotalTokens(0);
+    setQueueError("");
     setMessage({ type: "", text: "" });
   };
 
@@ -318,15 +441,29 @@ const STOPage = () => {
       return;
     }
     if (fbaSessionLog.length === 0) return;
+    if (queueError) {
+      setMessage({ type: "error", text: queueError });
+      return;
+    }
 
     // Check for duplicate tracking in the current session log (space-insensitive)
-    const trackingsNormalized = fbaSessionLog.map((s) =>
-      String(s.trackingNumber || "").replace(/\s+/g, ""),
-    );
-    const hasDuplicateInLog = trackingsNormalized.some(
-      (t, index) => t !== "" && trackingsNormalized.indexOf(t) !== index,
-    );
-    if (hasDuplicateInLog) {
+    // but ONLY if they are from different raw boxes (actual duplicates, not splits)
+    const hasErrorDuplicateInLog = fbaSessionLog.some((row) => {
+      const trackingNormalized = String(row.trackingNumber || "").replace(
+        /\s+/g,
+        "",
+      );
+      if (!trackingNormalized) return false;
+      const matchingBoxes = fbaSessionLog.filter(
+        (s) =>
+          String(s.trackingNumber || "").replace(/\s+/g, "") ===
+          trackingNormalized,
+      );
+      const uniqueBoxNumbers = new Set(matchingBoxes.map((s) => s.boxNumber));
+      return uniqueBoxNumbers.size > 1; // It's an error duplicate if they have different box numbers
+    });
+
+    if (hasErrorDuplicateInLog) {
       setMessage({
         type: "error",
         text: "Duplicate tracking number found in the current session log. Please check and remove duplicates.",
@@ -357,17 +494,22 @@ const STOPage = () => {
       }
     }
 
-    // Check inventory availability
-    const totalNeeded = fbaSessionLog.reduce(
-      (acc, curr) => acc + parseInt(curr.quantity || 0),
-      0,
-    );
-    if (totalNeeded > available) {
-      setMessage({
-        type: "error",
-        text: `Insufficient inventory! Total required: ${totalNeeded}, Available at ${fromLoc}: ${available}`,
-      });
-      return;
+    // Check inventory availability for each SKU in session log
+    const skuTotals = new Map();
+    fbaSessionLog.forEach((row) => {
+      const current = skuTotals.get(row.sku) || 0;
+      skuTotals.set(row.sku, current + Number(row.quantity || 0));
+    });
+
+    for (const [sku, totalQty] of skuTotals) {
+      const available = getAvailableQty(sku);
+      if (totalQty > available) {
+        setMessage({
+          type: "error",
+          text: `Insufficient inventory for ${sku}. Required ${totalQty}, available ${available} at ${fromLoc}.`,
+        });
+        return;
+      }
     }
 
     setIsProcessingPdf(true);
@@ -379,6 +521,10 @@ const STOPage = () => {
       setMessage({ type: "success", text: res.data.message });
       setFbaSessionLog([]);
       setFbaFiles([]);
+      setFbaRawBoxes([]);
+      setFbaSkuQueue([]);
+      setQueueSku("");
+      setQueueError("");
       fetchInventory();
       fetchTransactions();
     } catch (err) {
@@ -818,25 +964,7 @@ const STOPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Left Side: Upload & Action */}
             <div className="bg-white p-6 rounded shadow border h-fit">
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    SKU (Required)
-                  </label>
-                  <select
-                    value={selectedSku}
-                    onChange={(e) => setSelectedSku(e.target.value)}
-                    className="w-full border rounded px-3 py-2 border-orange-300 focus:border-orange-500"
-                    required
-                  >
-                    <option value="">Select SKU to Ship</option>
-                    {skus.map((s) => (
-                      <option key={s.sku} value={s.sku}>
-                        {s.sku} - {s.product_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              <div className="space-y-4 mb-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Location From
@@ -857,13 +985,91 @@ const STOPage = () => {
                       ))}
                   </select>
                 </div>
-              </div>
 
-              {selectedSku && fromLoc && (
-                <div className="bg-blue-50 p-3 rounded text-blue-800 text-sm font-medium border border-blue-100 mb-6">
-                  Available at {fromLoc}: {available}
+                <div className="border rounded p-4 bg-gray-50">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                    SKU Queue (FIFO Order)
+                  </h3>
+                  <div className="flex gap-3 items-end">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        SKU
+                      </label>
+                      <select
+                        value={queueSku}
+                        onChange={(e) => setQueueSku(e.target.value)}
+                        className="w-full border rounded px-3 py-2 text-sm"
+                      >
+                        <option value="">Select SKU</option>
+                        {skus.map((s) => (
+                          <option key={s.sku} value={s.sku}>
+                            {s.sku} - {s.product_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddQueueItem}
+                      className="bg-indigo-600 text-white rounded px-4 py-2 text-sm font-semibold hover:bg-indigo-700"
+                    >
+                      Add to Queue
+                    </button>
+                  </div>
+
+                  {queueError && (
+                    <div className="mt-3 text-xs text-red-600 font-medium">
+                      {queueError}
+                    </div>
+                  )}
+
+                  {fbaSkuQueue.length > 0 ? (
+                    <div className="mt-3 space-y-2">
+                      <div className="text-xs font-medium text-gray-600 mb-2">
+                        Queue Order (boxes will use SKUs in this order):
+                      </div>
+                      {fbaSkuQueue.map((sku, idx) => (
+                        <div
+                          key={`${sku}-${idx}`}
+                          className="flex items-center justify-between bg-white border rounded px-3 py-2 text-xs"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="bg-indigo-100 text-indigo-700 rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs">
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-gray-800">
+                                {sku}
+                              </div>
+                              <div className="text-gray-500">
+                                Available: {getAvailableQty(sku)}
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveQueueItem(idx)}
+                            className="text-red-500 hover:text-red-700 font-bold"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                      {totalBoxQty > 0 && (
+                        <div className="text-xs text-gray-600 pt-2 border-t">
+                          PDF total: <strong>{totalBoxQty}</strong> units from{" "}
+                          <strong>{fbaRawBoxes.length}</strong> boxes
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-gray-500 italic">
+                      Add SKUs to define the FIFO order. PDF quantities will be
+                      assigned to SKUs in this order.
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-lg font-bold">Upload Shipment PDF</h2>
@@ -1012,27 +1218,46 @@ const STOPage = () => {
                           row.trackingNumber || "",
                         ).replace(/\s+/g, "");
 
+                        const matchingBoxes = fbaSessionLog.filter(
+                          (s) =>
+                            String(s.trackingNumber || "").replace(
+                              /\s+/g,
+                              "",
+                            ) === rowTrackingNormalized,
+                        );
+
+                        // If multiple rows share the same tracking number but originated from the same raw box number, it's a split.
+                        // If they originated from different raw box numbers (or the same PDF was uploaded twice), it's a duplicate.
+                        const uniqueBoxNumbers = new Set(
+                          matchingBoxes.map((s) => s.boxNumber),
+                        );
+
                         const isDuplicateInLog =
+                          rowTrackingNormalized && uniqueBoxNumbers.size > 1;
+                        const isSplitInLog =
                           rowTrackingNormalized &&
-                          fbaSessionLog.filter(
-                            (s) =>
-                              String(s.trackingNumber || "").replace(
-                                /\s+/g,
-                                "",
-                              ) === rowTrackingNormalized,
-                          ).length > 1;
+                          matchingBoxes.length > 1 &&
+                          uniqueBoxNumbers.size === 1;
+
                         const isDuplicateInHistory = transactions.some(
                           (t) =>
                             String(t.shipment_id || "").replace(/\s+/g, "") ===
                             rowTrackingNormalized,
                         );
-                        const isDuplicate =
+
+                        const isErrorDuplicate =
                           isDuplicateInLog || isDuplicateInHistory;
 
                         return (
                           <tr
                             key={idx}
-                            className={isDuplicate ? "bg-red-50" : ""}
+                            className={
+                              isErrorDuplicate
+                                ? "bg-red-50"
+                                : isSplitInLog
+                                  ? "bg-yellow-50"
+                                  : ""
+                            }
                           >
                             <td className="px-3 py-2 whitespace-nowrap">
                               {row.boxNumber}
@@ -1043,21 +1268,29 @@ const STOPage = () => {
                             <td className="px-3 py-2 whitespace-nowrap">
                               <input
                                 type="number"
+                                min="1"
+                                className="border rounded px-2 py-1 w-16 text-sm"
                                 value={row.quantity}
                                 onChange={(e) =>
                                   handleQtyChange(idx, e.target.value)
                                 }
-                                className="w-16 border rounded px-2 py-1 text-sm"
                               />
                             </td>
                             <td className="px-3 py-2 whitespace-nowrap text-xs text-gray-500">
                               {row.fbaShipmentId}
                             </td>
                             <td
-                              className={`px-3 py-2 whitespace-nowrap text-xs ${isDuplicate ? "text-red-600 font-bold" : "text-gray-500"}`}
+                              className={`px-3 py-2 whitespace-nowrap text-xs ${isDuplicateInHistory ? "text-red-600 font-bold" : isDuplicateInLog ? "text-red-600 font-bold" : isSplitInLog ? "text-yellow-600 font-bold" : "text-gray-500"}`}
                             >
                               {row.trackingNumber}
-                              {isDuplicateInLog && (
+                              {isSplitInLog &&
+                                !isDuplicateInLog &&
+                                !isDuplicateInHistory && (
+                                  <div className="text-[10px] font-normal">
+                                    (Shipment split)
+                                  </div>
+                                )}
+                              {isDuplicateInLog && !isDuplicateInHistory && (
                                 <div className="text-[10px] font-normal">
                                   (Duplicate in list)
                                 </div>
@@ -1085,7 +1318,7 @@ const STOPage = () => {
                   <div className="mt-6 flex justify-end">
                     <button
                       className="bg-orange-600 text-white px-6 py-2 rounded font-bold hover:bg-orange-700 disabled:opacity-50"
-                      disabled={isProcessingPdf || !fromLoc}
+                      disabled={isProcessingPdf || !fromLoc || !!queueError}
                       onClick={handleConfirmShipment}
                     >
                       {isProcessingPdf ? "Processing..." : "Confirm Shipment"}
