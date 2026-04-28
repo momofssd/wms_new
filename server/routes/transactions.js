@@ -4,6 +4,29 @@ const mongoose = require("mongoose");
 const { extractTrackingNumbersFromText } = require("../utils/tracking");
 
 router.get("/", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  let allowedSkus = null;
+
+  if (authHeader) {
+    try {
+      const jwt = require("jsonwebtoken");
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      const db = mongoose.connection.db;
+      const usersCol = db.collection("users");
+      const user = await usersCol.findOne({
+        _id: new mongoose.Types.ObjectId(decoded.id),
+      });
+
+      if (user && user.role?.toLowerCase() !== "admin") {
+        allowedSkus = user.allowed_skus || [];
+      }
+    } catch (err) {
+      console.error("JWT verification failed in transactions route", err);
+    }
+  }
+
   try {
     const db = mongoose.connection.db;
     const transactionsCol = db.collection("transactions");
@@ -31,11 +54,25 @@ router.get("/", async (req, res) => {
       const sku = String(tx.sku || "")
         .trim()
         .toUpperCase();
-      if (activeSkus.has(sku)) return true;
-      // If it's a return, show it.
+
+      // If it's a return, show it regardless of user sku allowance.
       if (String(tx.type).toLowerCase() === "return") return true;
       if (String(tx.product_name || "").toUpperCase() === "RETURN") return true;
-      return false;
+
+      const isMasterData = activeSkusDocs.some(
+        (d) => String(d.sku).trim().toUpperCase() === sku,
+      );
+
+      // Filter by allowed SKUs for non-admin users
+      if (allowedSkus !== null) {
+        // Allow if not in master data OR in allowed SKUs
+        if (!isMasterData || allowedSkus.includes(sku)) {
+          return isMasterData ? activeSkus.has(sku) : true;
+        }
+        return false;
+      }
+
+      return isMasterData ? activeSkus.has(sku) : true;
     });
 
     res.json(filteredTxList);

@@ -11,6 +11,7 @@ import ReturnPage from "./pages/ReturnPage";
 import ShipmentTrackingPage from "./pages/ShipmentTrackingPage";
 import STOPage from "./pages/STOPage";
 import TransactionsPage from "./pages/TransactionsPage";
+import UserAdminPage from "./pages/UserAdminPage";
 import { useScannerHotkeys } from "./utils/scanner";
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
               path="shipment-tracking"
               element={<ShipmentTrackingPage />}
             />
+            <Route path="user-admin" element={<UserAdminPage />} />
           </Route>
         </Routes>
       </Router>

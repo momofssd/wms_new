@@ -3,6 +3,29 @@ const router = express.Router();
 const mongoose = require("mongoose");
 
 router.get("/", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  let allowedSkus = null;
+
+  if (authHeader) {
+    try {
+      const jwt = require("jsonwebtoken");
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      const db = mongoose.connection.db;
+      const usersCol = db.collection("users");
+      const user = await usersCol.findOne({
+        _id: new mongoose.Types.ObjectId(decoded.id),
+      });
+
+      if (user && user.role?.toLowerCase() !== "admin") {
+        allowedSkus = user.allowed_skus || [];
+      }
+    } catch (err) {
+      console.error("JWT verification failed in inventory route", err);
+    }
+  }
+
   try {
     const db = mongoose.connection.db;
     const inventoryCol = db.collection("inventory");
@@ -32,6 +55,14 @@ router.get("/", async (req, res) => {
         (d) => String(d.sku).trim().toUpperCase() === sku,
       );
       if (mmDoc && mmDoc.active === false) return false;
+
+      // Filter by allowed SKUs for non-admin users
+      if (allowedSkus !== null) {
+        // If it's a returned SKU (not in master data), allow it
+        if (!mmDoc) return true;
+        return allowedSkus.includes(sku);
+      }
+
       return true;
     });
 

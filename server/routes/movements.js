@@ -3,6 +3,29 @@ const router = express.Router();
 const mongoose = require("mongoose");
 
 router.get("/", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  let allowedSkus = null;
+
+  if (authHeader) {
+    try {
+      const jwt = require("jsonwebtoken");
+      const token = authHeader.split(" ")[1];
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+      const db = mongoose.connection.db;
+      const usersCol = db.collection("users");
+      const user = await usersCol.findOne({
+        _id: new mongoose.Types.ObjectId(decoded.id),
+      });
+
+      if (user && user.role?.toLowerCase() !== "admin") {
+        allowedSkus = user.allowed_skus || [];
+      }
+    } catch (err) {
+      console.error("JWT verification failed in movements route", err);
+    }
+  }
+
   try {
     const db = mongoose.connection.db;
     const movementCol = db.collection("movement");
@@ -59,10 +82,28 @@ router.get("/", async (req, res) => {
         const hadDetails = Array.isArray(mv.details) && mv.details.length > 0;
         const nextDetails = Array.isArray(mv.details)
           ? mv.details.filter((detail) => {
+              const detailSku = normalizeSku(detail.sku);
+
               if (isReturn) return true; // Always show details for returns
               if (String(detail.product_name || "").toUpperCase() === "RETURN")
                 return true; // Show return SKUs even in STO
-              return activeSkus.has(normalizeSku(detail.sku));
+
+              // If not a return and not in active SKUs (not in master data)
+              // We should allow it as it might be an un-mastered return
+              const isMasterData = activeSkusDocs.some(
+                (d) => String(d.sku).trim().toUpperCase() === detailSku,
+              );
+
+              // Filter by allowed SKUs for non-admin users
+              if (allowedSkus !== null) {
+                // Allow if not in master data OR in allowed SKUs
+                if (!isMasterData || allowedSkus.includes(detailSku)) {
+                  return isMasterData ? activeSkus.has(detailSku) : true;
+                }
+                return false;
+              }
+
+              return isMasterData ? activeSkus.has(detailSku) : true;
             })
           : mv.details;
 

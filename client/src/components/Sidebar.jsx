@@ -11,6 +11,7 @@ import {
   MapPin,
   Truck,
   Undo2,
+  Users,
   Volume2,
   VolumeX,
   X,
@@ -97,6 +98,12 @@ const Sidebar = ({
       href: "/shipment-tracking",
       icon: Truck,
       hide: isUser,
+    },
+    {
+      name: "User Admin",
+      href: "/user-admin",
+      icon: Users,
+      hide: !isAdmin,
     },
   ];
 
