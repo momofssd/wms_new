@@ -79,7 +79,27 @@ router.get("/", async (req, res) => {
     const filteredMvList = mvList
       .map((mv) => {
         const isReturn = String(mv.movement_type).toLowerCase() === "return";
+        const isReturnConvert =
+          String(mv.movement_type).toLowerCase() === "return_convert";
         const hadDetails = Array.isArray(mv.details) && mv.details.length > 0;
+
+        if (allowedSkus !== null && isReturnConvert) {
+          const targetSku = String(
+            mv.convert?.to_sku ||
+              (Array.isArray(mv.details)
+                ? mv.details.find((detail) => detail.converted_to_sku)
+                    ?.converted_to_sku
+                : "") ||
+              "",
+          )
+            .trim()
+            .toUpperCase();
+
+          if (!targetSku || !allowedSkus.includes(targetSku)) {
+            return null;
+          }
+        }
+
         const nextDetails = Array.isArray(mv.details)
           ? mv.details.filter((detail) => {
               const detailSku = normalizeSku(detail.sku);
@@ -110,6 +130,7 @@ router.get("/", async (req, res) => {
         return { ...mv, details: nextDetails, __hadDetails: hadDetails };
       })
       .filter((mv) => {
+        if (!mv) return false;
         if (!mv.__hadDetails) return true;
         return Array.isArray(mv.details) && mv.details.length > 0;
       })

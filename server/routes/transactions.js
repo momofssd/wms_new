@@ -54,9 +54,17 @@ router.get("/", async (req, res) => {
       const sku = String(tx.sku || "")
         .trim()
         .toUpperCase();
+      const type = String(tx.type || "").toLowerCase();
+
+      if (allowedSkus !== null && type === "return_convert") {
+        const targetSku = String(tx.converted_to_sku || tx.sku || "")
+          .trim()
+          .toUpperCase();
+        if (!allowedSkus.includes(targetSku)) return false;
+      }
 
       // If it's a return, show it regardless of user sku allowance.
-      if (String(tx.type).toLowerCase() === "return") return true;
+      if (type === "return") return true;
       if (String(tx.product_name || "").toUpperCase() === "RETURN") return true;
 
       const isMasterData = activeSkusDocs.some(
