@@ -200,6 +200,35 @@ router.delete("/:txnNum", async (req, res) => {
             { upsert: true },
           );
         }
+      } else if (movementType === "return_convert") {
+        const qty = Math.abs(parseInt(detail.qty || 0));
+        const location = String(detail.location || "")
+          .trim()
+          .toUpperCase();
+        const locFrom = String(detail.location_from || "")
+          .trim()
+          .toUpperCase();
+
+        if (qty <= 0) continue;
+
+        if (detail.converted_to_sku && location) {
+          await inventoryCol.updateOne(
+            { sku, location },
+            { $inc: { quantity: qty } },
+            { upsert: true },
+          );
+        } else if (detail.converted_from_sku && location) {
+          await inventoryCol.updateOne(
+            { sku, location },
+            { $inc: { quantity: -qty } },
+          );
+        } else if (locFrom === "AMAZON") {
+          await inventoryCol.updateOne(
+            { sku, location: "AMAZON" },
+            { $inc: { quantity: qty } },
+            { upsert: true },
+          );
+        }
       }
     }
 

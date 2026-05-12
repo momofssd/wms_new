@@ -8,6 +8,8 @@ const ReturnPage = () => {
   const { defaultLocation, audioEnabled } = useAuth();
   const [activeTab, setActiveTab] = useState("manual");
   const [locations, setLocations] = useState([]);
+  const [inventory, setInventory] = useState([]);
+  const [materials, setMaterials] = useState([]);
   const [message, setMessage] = useState({ type: "", text: "" });
 
   // Manual Entry State
@@ -26,16 +28,57 @@ const ReturnPage = () => {
   const [scanSessionLog, setScanSessionLog] = useState([]);
   const scanRef = useRef(null);
 
+  // Return Convert State
+  const [convertReturnSku, setConvertReturnSku] = useState("");
+  const [convertTargetSku, setConvertTargetSku] = useState("");
+  const [convertLoc, setConvertLoc] = useState("");
+  const [convertQty, setConvertQty] = useState(1);
+
   useEffect(() => {
     fetchLocations();
+    fetchInventory();
+    fetchMaterials();
   }, []);
 
   useEffect(() => {
     if (defaultLocation) {
       setManualLoc(defaultLocation);
       setScanLoc(defaultLocation);
+      setConvertLoc(defaultLocation);
     }
   }, [defaultLocation]);
+
+  const activeSkuSet = new Set(
+    materials.filter((m) => m.active).map((m) => String(m.sku).toUpperCase()),
+  );
+
+  const returnInventory = inventory
+    .filter((item) => {
+      const sku = String(item.sku || "").toUpperCase();
+      const productName = String(item.product_name || "").toUpperCase();
+      const location = String(item.location || "").toUpperCase();
+      return (
+        location !== "AMAZON" &&
+        Number(item.quantity || 0) > 0 &&
+        (productName === "RETURN" || !activeSkuSet.has(sku))
+      );
+    })
+    .sort((a, b) =>
+      `${a.sku}-${a.location}`.localeCompare(`${b.sku}-${b.location}`),
+    );
+
+  const activeMaterials = materials
+    .filter((m) => m.active)
+    .sort((a, b) => String(a.sku).localeCompare(String(b.sku)));
+
+  const selectedReturnItem = returnInventory.find(
+    (item) =>
+      String(item.sku).toUpperCase() === convertReturnSku &&
+      String(item.location).toUpperCase() === convertLoc,
+  );
+  const convertAvailable = selectedReturnItem
+    ? Number(selectedReturnItem.quantity || 0)
+    : 0;
 
   // Refocus for scanning
   useEffect(() => {
@@ -69,6 +112,24 @@ const ReturnPage = () => {
     }
   };
 
+  const fetchInventory = async () => {
+    try {
+      const res = await api.get("/inventory");
+      setInventory(res.data);
+    } catch (err) {
+      console.error("Error fetching inventory", err);
+    }
+  };
+
+  const fetchMaterials = async () => {
+    try {
+      const res = await api.get("/master-data/materials");
+      setMaterials(res.data);
+    } catch (err) {
+      console.error("Error fetching materials", err);
+    }
+  };
+
   const handleManualSubmit = async (e) => {
     e.preventDefault();
     if (!manualSku || !manualLoc || manualQty < 1) {
@@ -89,6 +150,7 @@ const ReturnPage = () => {
       });
       setManualSku("");
       setManualQty(1);
+      fetchInventory();
     } catch (err) {
       setMessage({
         type: "error",
@@ -140,10 +202,58 @@ const ReturnPage = () => {
       });
       setScanSessionLog([]);
       setScanSessionActive(false);
+      fetchInventory();
     } catch (err) {
       setMessage({
         type: "error",
         text: err.response?.data?.message || "Return failed",
+      });
+    }
+  };
+
+  const handleConvertSubmit = async (e) => {
+    e.preventDefault();
+    if (!convertReturnSku || !convertTargetSku || !convertLoc || convertQty < 1) {
+      setMessage({
+        type: "error",
+        text: "Please select return SKU, convert SKU, quantity and location",
+      });
+      return;
+    }
+    if (convertReturnSku === convertTargetSku) {
+      setMessage({
+        type: "error",
+        text: "Return SKU and convert SKU must be different",
+      });
+      return;
+    }
+    if (convertQty > convertAvailable) {
+      setMessage({
+        type: "error",
+        text: `Only ${convertAvailable} available for ${convertReturnSku} at ${convertLoc}`,
+      });
+      return;
+    }
+
+    try {
+      const res = await api.post("/inbound/return-convert", {
+        returnSku: convertReturnSku,
+        targetSku: convertTargetSku,
+        location: convertLoc,
+        qty: convertQty,
+      });
+      setMessage({
+        type: "success",
+        text: res.data.message,
+      });
+      setConvertReturnSku("");
+      setConvertTargetSku("");
+      setConvertQty(1);
+      fetchInventory();
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err.response?.data?.message || "Return Convert failed",
       });
     }
   };
@@ -170,6 +280,15 @@ const ReturnPage = () => {
           }}
         >
           Scan Return Entry
+        </button>
+        <button
+          className={`pb-2 px-4 ${activeTab === "convert" ? "border-b-2 border-indigo-600 text-indigo-600 font-semibold" : "text-gray-500"}`}
+          onClick={() => {
+            setActiveTab("convert");
+            setMessage({ type: "", text: "" });
+          }}
+        >
+          Return Convert
         </button>
       </div>
 
@@ -342,6 +461,168 @@ const ReturnPage = () => {
             ) : (
               <p className="text-sm text-gray-400">No scans in this session.</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "convert" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="bg-white p-6 rounded shadow border h-fit">
+            <form onSubmit={handleConvertSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location
+                </label>
+                <select
+                  value={convertLoc}
+                  onChange={(e) => {
+                    setConvertLoc(e.target.value);
+                    setConvertReturnSku("");
+                    setConvertQty(1);
+                  }}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Select Location</option>
+                  {locations.map((l) => (
+                    <option key={l} value={l}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Returned SKU
+                </label>
+                <select
+                  value={convertReturnSku}
+                  onChange={(e) => {
+                    setConvertReturnSku(e.target.value);
+                    setConvertQty(1);
+                  }}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Select returned SKU</option>
+                  {returnInventory
+                    .filter((item) => String(item.location).toUpperCase() === convertLoc)
+                    .map((item) => (
+                      <option key={`${item.sku}-${item.location}`} value={item.sku}>
+                        {item.sku} - {item.product_name || "RETURN"} - Qty{" "}
+                        {item.quantity}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Convert To SKU
+                </label>
+                <select
+                  value={convertTargetSku}
+                  onChange={(e) => setConvertTargetSku(e.target.value)}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                >
+                  <option value="">Select active SKU</option>
+                  {activeMaterials.map((m) => (
+                    <option key={m.sku} value={m.sku}>
+                      {m.sku} - {m.product_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Quantity
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max={convertAvailable || undefined}
+                  value={convertQty}
+                  onChange={(e) => setConvertQty(parseInt(e.target.value) || 1)}
+                  className="w-full border rounded px-3 py-2"
+                  required
+                />
+                {convertReturnSku && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Available: {convertAvailable}
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-indigo-600 text-white rounded py-2 font-medium hover:bg-indigo-700"
+              >
+                Convert Return
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-white p-6 rounded shadow border">
+            <h2 className="text-xl font-semibold mb-4">Available Returns</h2>
+            <div className="border rounded overflow-hidden max-h-[500px] overflow-y-auto">
+              <table className="min-w-full divide-y divide-gray-200 text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      SKU
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Product Name
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Location
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                      Qty
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {returnInventory.map((item) => (
+                    <tr
+                      key={`${item.sku}-${item.location}`}
+                      className="cursor-pointer hover:bg-gray-50"
+                      onClick={() => {
+                        setConvertLoc(item.location);
+                        setConvertReturnSku(item.sku);
+                        setConvertQty(1);
+                      }}
+                    >
+                      <td className="px-3 py-2 whitespace-nowrap font-medium text-gray-900">
+                        {item.sku}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500">
+                        {item.product_name || "RETURN"}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-500">
+                        {item.location}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-gray-900 font-semibold">
+                        {item.quantity}
+                      </td>
+                    </tr>
+                  ))}
+                  {returnInventory.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan="4"
+                        className="px-3 py-8 text-center text-gray-400 italic"
+                      >
+                        No return inventory available.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
