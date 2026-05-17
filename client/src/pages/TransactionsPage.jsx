@@ -39,7 +39,6 @@ const TransactionsPage = () => {
   const [locOptions, setLocOptions] = useState([]);
   const [typeOptions, setTypeOptions] = useState([]);
 
-  const isAdmin = user?.role?.toLowerCase() === "admin";
   const isUser = user?.role?.toLowerCase() === "user";
 
   useEffect(() => {
@@ -311,7 +310,6 @@ const TransactionsPage = () => {
   const getFbaTransactions = () => {
     const amazon = "AMAZON";
     return transactions.filter((t) => {
-      const locFrom = String(t.location_from || "").toUpperCase();
       const locTo = String(t.location_to || "").toUpperCase();
       const reason = String(t.reason || "").toUpperCase();
 
@@ -373,6 +371,11 @@ const TransactionsPage = () => {
     return condition ? condition.price : 0;
   };
 
+  const getTimestampSortValue = (timestamp) => {
+    const time = new Date(timestamp).getTime();
+    return Number.isNaN(time) ? Number.MAX_SAFE_INTEGER : time;
+  };
+
   const handleDownloadChargesCSV = () => {
     setIsExportingCharges(true);
     try {
@@ -401,17 +404,20 @@ const TransactionsPage = () => {
         if (isFbm) {
           const qty = Math.abs(t.qty || t.inbound_qty || t.outbound_qty || 0);
           const unitPrice = findPrice(t.sku, "FBM", t.timestamp);
-          rows.push([
-            `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
-            `"${String(t.sku || "").replace(/"/g, '""')}"`,
-            `"${String(t.product_name || "").replace(/"/g, '""')}"`,
-            `="${String(t["FBA ID"] || "").replace(/"/g, '""')}"`,
-            `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
-            "FBM",
-            qty,
-            unitPrice,
-            (qty * unitPrice).toFixed(2),
-          ]);
+          rows.push({
+            timestamp: getTimestampSortValue(t.timestamp),
+            columns: [
+              `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
+              `"${String(t.sku || "").replace(/"/g, '""')}"`,
+              `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+              `="${String(t["FBA ID"] || "").replace(/"/g, '""')}"`,
+              `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+              "FBM",
+              qty,
+              unitPrice,
+              (qty * unitPrice).toFixed(2),
+            ],
+          });
         }
       });
 
@@ -426,22 +432,27 @@ const TransactionsPage = () => {
           0;
         const qty = Math.abs(rawQty);
         const unitPrice = findPrice(t.sku, "FBA", t.timestamp);
-        rows.push([
-          `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
-          `"${String(t.sku || "").replace(/"/g, '""')}"`,
-          `"${String(t.product_name || "").replace(/"/g, '""')}"`,
-          `="${String(t["FBA ID"] || "").replace(/"/g, '""')}"`,
-          `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
-          "FBA",
-          qty,
-          unitPrice,
-          (qty * unitPrice).toFixed(2),
-        ]);
+        rows.push({
+          timestamp: getTimestampSortValue(t.timestamp),
+          columns: [
+            `"${new Date(t.timestamp).toLocaleString().replace(/"/g, '""')}"`,
+            `"${String(t.sku || "").replace(/"/g, '""')}"`,
+            `"${String(t.product_name || "").replace(/"/g, '""')}"`,
+            `="${String(t["FBA ID"] || "").replace(/"/g, '""')}"`,
+            `="${String(t.shipment_id || "").replace(/"/g, '""')}"`,
+            "FBA",
+            qty,
+            unitPrice,
+            (qty * unitPrice).toFixed(2),
+          ],
+        });
       });
 
       const csvContent = [
         headers.join(","),
-        ...rows.map((row) => row.join(",")),
+        ...rows
+          .sort((a, b) => a.timestamp - b.timestamp)
+          .map((row) => row.columns.join(",")),
       ].join("\n");
 
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
