@@ -4,6 +4,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  FileText,
   History,
   LayoutDashboard,
   LogIn,
@@ -98,6 +99,12 @@ const Sidebar = ({
       href: "/shipment-tracking",
       icon: Truck,
       hide: isUser,
+    },
+    {
+      name: "Invoice",
+      href: "/invoice",
+      icon: FileText,
+      hide: !isAdmin,
     },
     {
       name: "User Admin",

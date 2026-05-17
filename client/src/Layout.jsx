@@ -30,6 +30,13 @@ const Layout = () => {
     }
   }
 
+  if (
+    ["/invoice", "/user-admin"].includes(location.pathname) &&
+    user?.role?.toLowerCase() !== "admin"
+  ) {
+    return <Navigate to="/" replace />;
+  }
+
   return (
     <div className="flex min-h-screen bg-white">
       <Sidebar

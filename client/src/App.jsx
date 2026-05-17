@@ -3,6 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import Layout from "./Layout";
 import HomePage from "./pages/HomePage";
 import InboundPage from "./pages/InboundPage";
+import InvoicePage from "./pages/InvoicePage";
 import LoginPage from "./pages/LoginPage";
 import MasterDataPage from "./pages/MasterDataPage";
 import MovementsPage from "./pages/MovementsPage";
@@ -32,6 +33,7 @@ function App() {
             <Route path="outbound" element={<OutboundPage />} />
             <Route path="sto" element={<STOPage />} />
             <Route path="transactions" element={<TransactionsPage />} />
+            <Route path="invoice" element={<InvoicePage />} />
             <Route
               path="shipment-tracking"
               element={<ShipmentTrackingPage />}
