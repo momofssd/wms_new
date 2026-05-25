@@ -45,7 +45,7 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
     const base64Pdf = pdfBuffer.toString("base64");
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
-    const modelName = "gemini-3.5-flash";
+    const modelName = "gemini-3.1-flash-lite";
 
     // Using EXACTLY Gemini 3.0 Flash with JSON Mode and Safety Filters off
     const model = genAI.getGenerativeModel({
@@ -73,16 +73,75 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
       ],
     });
 
-    const prompt = `Analyze the attached PDF. The document consists of pairs: every odd-numbered page is an Amazon FBA label and every even-numbered page is the corresponding UPS shipping label for the same box (e.g., Page 1 is Box 1 FBA, Page 2 is Box 1 UPS).
+    const prompt = `
+You are extracting box-level shipping data from an attached PDF.
 
-Extract the FBA Shipment ID, UPS Tracking Number, and Weight for each box, moving sequentially through the document.
+The PDF follows this fixed structure:
+- Every odd-numbered page is an Amazon FBA box label.
+- Every even-numbered page is the matching UPS shipping label for the same box.
+- Page 1 + Page 2 = Box 1
+- Page 3 + Page 4 = Box 2
+- Page 5 + Page 6 = Box 3
+- Continue this pattern until the end of the PDF.
 
-You MUST return a JSON array of objects. Each object must represent a box and contain exactly these keys:
-- "boxNumber" (string, e.g., "Box 1")
-- "fbaShipmentId" (string)
-- "quantity" (quantity is found in FBA label labled as "qty")
-- "trackingNumber" (string)
-- "weight" (string, e.g., "28 LBS")`;
+For each box, extract exactly these fields:
+
+1. boxNumber
+- Use the sequence of page pairs.
+- Example: pages 1-2 are "Box 1", pages 3-4 are "Box 2".
+
+2. fbaShipmentId
+- Extract only from the Amazon FBA label page, not the UPS page.
+- It usually starts with "FBA".
+- Example format: FBA19DWH289XU000001
+- Do not confuse it with SKU, address, shipment name, or barcode text.
+
+3. quantity
+- Extract only from the Amazon FBA label page.
+- It appears near the text "Qty".
+- Return only the numeric quantity as a string.
+- Example: if the label says "Qty 12", return "12".
+
+4. trackingNumber
+- Extract only from the UPS shipping label page.
+- It appears near "TRACKING #" or below "UPS GROUND".
+- UPS tracking numbers usually start with "1Z".
+- Preserve spaces if visible.
+- Example: "1Z 229 W11 03 0879 2318".
+
+5. weight
+- Extract only from the UPS shipping label page.
+- It is usually near the top of the UPS label.
+- Return the full value with unit.
+- Example: "72 LBS".
+
+Important validation rules:
+- Do not mix data between boxes.
+- The FBA label and UPS label must come from the same page pair.
+- If the PDF has 8 pages, return 4 objects.
+- If a field is not readable, return an empty string for that field.
+- Do not guess missing values.
+- Do not add explanation, markdown, comments, or extra text.
+- Return valid JSON only.
+- The output must be a JSON array.
+- Each object must contain exactly these keys:
+  "boxNumber",
+  "fbaShipmentId",
+  "quantity",
+  "trackingNumber",
+  "weight"
+
+Return format example:
+[
+  {
+    "boxNumber": "Box 1",
+    "fbaShipmentId": "FBA19DWH289XU000001",
+    "quantity": "12",
+    "trackingNumber": "1Z 229 W11 03 0879 2318",
+    "weight": "72 LBS"
+  }
+]
+`;
 
     console.log(
       `Calling Gemini (model: ${modelName}) for file: ${req.file.originalname}`,
