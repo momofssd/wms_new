@@ -45,7 +45,7 @@ router.post("/process-fba-pdf", upload.single("pdf"), async (req, res) => {
     const base64Pdf = pdfBuffer.toString("base64");
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API);
-    const modelName = "gemini-3.1-flash-lite-preview";
+    const modelName = "gemini-3.5-flash";
 
     // Using EXACTLY Gemini 3.0 Flash with JSON Mode and Safety Filters off
     const model = genAI.getGenerativeModel({

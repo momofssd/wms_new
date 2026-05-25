@@ -1,7 +1,29 @@
 const express = require("express");
 const router = express.Router();
+const jwt = require("jsonwebtoken");
 const mongoose = require("mongoose");
 const { extractTrackingNumbersFromText } = require("../utils/tracking");
+
+const requireAdmin = (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.status(401).json({ message: "No token" });
+    return null;
+  }
+
+  try {
+    const token = authHeader.split(" ")[1];
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (decoded.role?.toLowerCase() !== "admin") {
+      res.status(403).json({ message: "Forbidden" });
+      return null;
+    }
+    return decoded;
+  } catch (err) {
+    res.status(401).json({ message: "Invalid token" });
+    return null;
+  }
+};
 
 router.get("/", async (req, res) => {
   const authHeader = req.headers.authorization;
@@ -9,7 +31,6 @@ router.get("/", async (req, res) => {
 
   if (authHeader) {
     try {
-      const jwt = require("jsonwebtoken");
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
@@ -149,6 +170,47 @@ router.get("/extract-shipments", async (req, res) => {
   } catch (err) {
     console.error("Extraction error:", err);
     res.status(500).json({ message: "Error extracting shipments" });
+  }
+});
+
+router.patch("/:id/shipment-id", async (req, res) => {
+  const admin = requireAdmin(req, res);
+  if (!admin) return;
+
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).json({ message: "Invalid transaction ID" });
+  }
+
+  if (typeof req.body.shipment_id !== "string") {
+    return res.status(400).json({ message: "Shipment ID must be text" });
+  }
+
+  const shipmentId = req.body.shipment_id.trim();
+
+  try {
+    const db = mongoose.connection.db;
+    const transactionsCol = db.collection("transactions");
+    const transactionId = new mongoose.Types.ObjectId(req.params.id);
+    const updated = await transactionsCol.findOneAndUpdate(
+      { _id: transactionId },
+      {
+        $set: {
+          shipment_id: shipmentId,
+          shipment_id_updated_at: new Date(),
+          shipment_id_updated_by: admin.username || admin.id,
+        },
+      },
+      { returnDocument: "after" },
+    );
+
+    if (!updated) {
+      return res.status(404).json({ message: "Transaction not found" });
+    }
+
+    res.json({ success: true, transaction: updated });
+  } catch (err) {
+    console.error("Error updating transaction shipment ID:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 

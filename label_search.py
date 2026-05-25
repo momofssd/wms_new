@@ -41,6 +41,6 @@ def search_pdf_content(root_directory, search_string):
 # --- Configuration ---
 # Use the 'r' prefix to avoid "invalid escape sequence"
 folder_to_search = r"E:\WHS" 
-string_to_find = "CA 955 6-01"
+string_to_find = "zp8l"
 
 search_pdf_content(folder_to_search, string_to_find)

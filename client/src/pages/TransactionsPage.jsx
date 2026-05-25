@@ -33,6 +33,10 @@ const TransactionsPage = () => {
   const [isExportingCharges, setIsExportingCharges] = useState(false);
   const [shipmentPage, setShipmentPage] = useState(0);
   const [allShipmentData, setAllShipmentData] = useState([]);
+  const [shipmentEditId, setShipmentEditId] = useState(null);
+  const [shipmentDraft, setShipmentDraft] = useState("");
+  const [savingShipmentId, setSavingShipmentId] = useState(false);
+  const [shipmentUpdateError, setShipmentUpdateError] = useState("");
 
   // Options
   const [skuOptions, setSkuOptions] = useState([]);
@@ -40,6 +44,7 @@ const TransactionsPage = () => {
   const [typeOptions, setTypeOptions] = useState([]);
 
   const isUser = user?.role?.toLowerCase() === "user";
+  const isAdmin = user?.role?.toLowerCase() === "admin";
 
   useEffect(() => {
     fetchTransactions();
@@ -92,6 +97,46 @@ const TransactionsPage = () => {
       setAllShipmentData(res.data);
     } catch (err) {
       console.error("Error fetching all shipments", err);
+    }
+  };
+
+  const startShipmentEdit = (transaction) => {
+    setShipmentEditId(transaction._id);
+    setShipmentDraft(transaction.shipment_id || "");
+    setShipmentUpdateError("");
+  };
+
+  const cancelShipmentEdit = () => {
+    setShipmentEditId(null);
+    setShipmentDraft("");
+    setShipmentUpdateError("");
+  };
+
+  const handleShipmentSave = async (transaction) => {
+    setSavingShipmentId(true);
+    setShipmentUpdateError("");
+
+    try {
+      const res = await api.patch(`/transactions/${transaction._id}/shipment-id`, {
+        shipment_id: shipmentDraft,
+      });
+      const updatedTransaction = res.data.transaction;
+
+      setTransactions((prev) =>
+        prev.map((row) =>
+          row._id === transaction._id ? { ...row, ...updatedTransaction } : row,
+        ),
+      );
+      setShipmentEditId(null);
+      setShipmentDraft("");
+      fetchAllShipments();
+    } catch (err) {
+      console.error("Error updating shipment ID", err);
+      setShipmentUpdateError(
+        err.response?.data?.message || "Failed to update Shipment ID",
+      );
+    } finally {
+      setSavingShipmentId(false);
     }
   };
 
@@ -1016,6 +1061,12 @@ const TransactionsPage = () => {
         </div>
       </div>
 
+      {shipmentUpdateError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded mb-4">
+          {shipmentUpdateError}
+        </div>
+      )}
+
       <div className="bg-white shadow border rounded overflow-x-auto mb-4">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50 text-[10px]">
@@ -1072,41 +1123,97 @@ const TransactionsPage = () => {
                     <td className="px-3 py-2 max-w-[150px] truncate">
                       {t["FBA ID"]}
                     </td>
-                    <td className="px-3 py-2 max-w-[150px] truncate">
-                      {(() => {
-                        const sid = (t.shipment_id || "").replace(/\s+/g, "");
-                        if (sid.toLowerCase().startsWith("1z")) {
-                          return (
-                            <a
-                              href={`https://www.ups.com/track?tracknum=${sid}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-indigo-600 hover:underline"
+                    <td className="px-3 py-2 max-w-[240px]">
+                      {isAdmin && shipmentEditId === t._id ? (
+                        <form
+                          className="flex items-center gap-1"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            handleShipmentSave(t);
+                          }}
+                        >
+                          <input
+                            type="text"
+                            autoFocus
+                            value={shipmentDraft}
+                            onChange={(event) =>
+                              setShipmentDraft(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Escape") cancelShipmentEdit();
+                            }}
+                            disabled={savingShipmentId}
+                            className="w-44 border rounded px-2 py-1 text-xs"
+                            aria-label="Tracking Shipment ID"
+                          />
+                          <button
+                            type="submit"
+                            disabled={savingShipmentId}
+                            className="text-indigo-700 hover:underline disabled:opacity-50"
+                          >
+                            {savingShipmentId ? "Saving..." : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelShipmentEdit}
+                            disabled={savingShipmentId}
+                            className="text-gray-500 hover:underline disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </form>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <span className="truncate">
+                            {(() => {
+                              const sid = (t.shipment_id || "").replace(
+                                /\s+/g,
+                                "",
+                              );
+                              if (sid.toLowerCase().startsWith("1z")) {
+                                return (
+                                  <a
+                                    href={`https://www.ups.com/track?tracknum=${sid}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-600 hover:underline"
+                                  >
+                                    {t.shipment_id}
+                                  </a>
+                                );
+                              }
+                              if (
+                                sid.length === 22 &&
+                                /^\d+$/.test(sid) &&
+                                ["92", "93", "94", "95"].some((p) =>
+                                  sid.startsWith(p),
+                                )
+                              ) {
+                                return (
+                                  <a
+                                    href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${sid}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-indigo-600 hover:underline"
+                                  >
+                                    {t.shipment_id}
+                                  </a>
+                                );
+                              }
+                              return t.shipment_id;
+                            })()}
+                          </span>
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => startShipmentEdit(t)}
+                              className="shrink-0 text-indigo-700 hover:underline"
                             >
-                              {t.shipment_id}
-                            </a>
-                          );
-                        }
-                        if (
-                          sid.length === 22 &&
-                          /^\d+$/.test(sid) &&
-                          ["92", "93", "94", "95"].some((p) =>
-                            sid.startsWith(p),
-                          )
-                        ) {
-                          return (
-                            <a
-                              href={`https://tools.usps.com/go/TrackConfirmAction?tLabels=${sid}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-indigo-600 hover:underline"
-                            >
-                              {t.shipment_id}
-                            </a>
-                          );
-                        }
-                        return t.shipment_id;
-                      })()}
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap font-bold text-indigo-700">
                       {idx === 0 ? t.movement_transaction_num : ""}
