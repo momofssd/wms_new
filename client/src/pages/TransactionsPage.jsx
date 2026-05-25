@@ -14,6 +14,7 @@ const TransactionsPage = () => {
   const [skuSearch, setSkuSearch] = useState("");
   const [nameFilter, setNameFilter] = useState("");
   const [shipmentFilter, setShipmentFilter] = useState("");
+  const [fbaIdFilter, setFbaIdFilter] = useState("");
   const [locFilter, setLocFilter] = useState([]);
   const [typeFilter, setTypeFilter] = useState([]);
   const [startDate, setStartDate] = useState("");
@@ -163,6 +164,16 @@ const TransactionsPage = () => {
       );
     }
 
+    if (fbaIdFilter.trim()) {
+      const prefix = fbaIdFilter.trim().toUpperCase();
+      filtered = filtered.filter((t) =>
+        String(t["FBA ID"] || "")
+          .trim()
+          .toUpperCase()
+          .startsWith(prefix),
+      );
+    }
+
     if (locFilter.length > 0) {
       filtered = filtered.filter((t) => locFilter.includes(t.location));
     }
@@ -233,6 +244,7 @@ const TransactionsPage = () => {
     skuFilter,
     nameFilter,
     shipmentFilter,
+    fbaIdFilter,
     locFilter,
     typeFilter,
     startDate,
@@ -256,6 +268,7 @@ const TransactionsPage = () => {
       skuFilter.length > 0 ||
       nameFilter ||
       shipmentFilter ||
+      fbaIdFilter.trim() ||
       locFilter.length > 0 ||
       typeFilter.length !== typeOptions.length ||
       showFBA ||
@@ -275,6 +288,7 @@ const TransactionsPage = () => {
     skuFilter,
     nameFilter,
     shipmentFilter,
+    fbaIdFilter,
     locFilter,
     typeFilter,
     typeOptions,
@@ -384,6 +398,16 @@ const TransactionsPage = () => {
           !(t.shipment_id || "")
             .toUpperCase()
             .includes(shipmentFilter.toUpperCase())
+        )
+          return false;
+      }
+
+      if (fbaIdFilter.trim()) {
+        if (
+          !String(t["FBA ID"] || "")
+            .trim()
+            .toUpperCase()
+            .startsWith(fbaIdFilter.trim().toUpperCase())
         )
           return false;
       }
@@ -817,6 +841,16 @@ const TransactionsPage = () => {
               onChange={(e) => setShipmentFilter(e.target.value)}
               className="w-full border rounded px-2 py-1 text-sm"
               placeholder="Contains..."
+            />
+            <label className="block text-xs font-medium text-gray-700 mt-2 mb-1">
+              FBA ID
+            </label>
+            <input
+              type="text"
+              value={fbaIdFilter}
+              onChange={(e) => setFbaIdFilter(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-sm"
+              placeholder="Starts with..."
             />
           </div>
           <div>
