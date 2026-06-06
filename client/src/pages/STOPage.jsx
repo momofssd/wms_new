@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import api from "../api";
 import { useAuth } from "../context/AuthContext";
 
+const getQueueSku = (item) =>
+  typeof item === "string" ? item : item?.sku || "";
+
 const STOPage = () => {
-  const { user, defaultLocation } = useAuth();
+  const { defaultLocation } = useAuth();
   const [locations, setLocations] = useState([]);
   const [skus, setSkus] = useState([]);
   const [selectedSku, setSelectedSku] = useState("");
@@ -63,20 +66,38 @@ const STOPage = () => {
     } else {
       setAvailable(0);
     }
-  }, [selectedSku, fromLoc, inventory]);
+  }, [selectedSku, fromLoc, inventory, qty]);
 
   const totalBoxQty = useMemo(
     () => fbaRawBoxes.reduce((acc, curr) => acc + (curr.quantity || 0), 0),
     [fbaRawBoxes],
   );
 
-  const getAvailableQty = (sku) => {
+  const getAvailableQty = useCallback((sku) => {
     if (!sku || !fromLoc) return 0;
     const item = inventory.find((i) => i.sku === sku && i.location === fromLoc);
     return item ? item.quantity || 0 : 0;
+  }, [fromLoc, inventory]);
+
+  const getQueueQuantity = useCallback((item) => {
+    const sku = getQueueSku(item);
+    if (typeof item === "string") return getAvailableQty(sku);
+    return Number(item?.quantity || 0);
+  }, [getAvailableQty]);
+
+  const clampQueueQuantity = (value, maxQty) => {
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) return 0;
+    return Math.min(parsed, maxQty);
   };
 
-  const assignQueueToBoxes = (queue, boxes) => {
+  const totalQueueQty = useMemo(
+    () =>
+      fbaSkuQueue.reduce((acc, item) => acc + getQueueQuantity(item), 0),
+    [fbaSkuQueue, getQueueQuantity],
+  );
+
+  const assignQueueToBoxes = useCallback((queue, boxes) => {
     if (queue.length === 0) {
       return {
         error: "Add SKUs to the queue to assign PDF quantities.",
@@ -86,14 +107,10 @@ const STOPage = () => {
 
     let queueIdx = 0;
     const assigned = [];
-
-    // Track the remaining available qty for each SKU in the queue
-    const skuRemaining = new Map();
-    for (const sku of queue) {
-      if (!skuRemaining.has(sku)) {
-        skuRemaining.set(sku, getAvailableQty(sku));
-      }
-    }
+    const queueRemaining = queue.map((item) => ({
+      sku: getQueueSku(item),
+      quantity: getQueueQuantity(item),
+    }));
 
     for (const box of boxes) {
       let boxQtyToFulfill = Number(box.quantity) || 0;
@@ -102,8 +119,9 @@ const STOPage = () => {
       // Fulfill boxQtyToFulfill using the SKUs in the queue sequentially,
       // splitting the box quantity across multiple SKUs if necessary.
       while (boxQtyToFulfill > 0 && queueIdx < queue.length) {
-        const currentSku = queue[queueIdx];
-        const remaining = skuRemaining.get(currentSku) || 0;
+        const currentQueueItem = queueRemaining[queueIdx];
+        const currentSku = currentQueueItem.sku;
+        const remaining = currentQueueItem.quantity || 0;
 
         if (remaining > 0) {
           // How much can we take from this SKU?
@@ -115,11 +133,11 @@ const STOPage = () => {
             quantity: takeQty,
           });
 
-          skuRemaining.set(currentSku, remaining - takeQty);
+          currentQueueItem.quantity = remaining - takeQty;
           boxQtyToFulfill -= takeQty;
 
           // If this SKU is now exhausted, move to the next SKU in the queue
-          if (remaining - takeQty === 0) {
+          if (currentQueueItem.quantity === 0) {
             queueIdx++;
           }
         } else {
@@ -137,7 +155,28 @@ const STOPage = () => {
     }
 
     return { assigned, error: "" };
-  };
+  }, [getQueueQuantity]);
+
+  useEffect(() => {
+    setFbaSkuQueue((prev) => {
+      let changed = false;
+      const next = prev.map((item) => {
+        const sku = getQueueSku(item);
+        const maxQty = getAvailableQty(sku);
+        const currentQty = getQueueQuantity(item);
+        const quantity = Math.min(currentQty, maxQty);
+
+        if (typeof item === "string" || quantity !== currentQty) {
+          changed = true;
+          return { sku, quantity };
+        }
+
+        return item;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [getAvailableQty, getQueueQuantity]);
 
   useEffect(() => {
     if (fbaRawBoxes.length === 0) {
@@ -160,7 +199,7 @@ const STOPage = () => {
 
     setQueueError("");
     setFbaSessionLog(assigned);
-  }, [fbaRawBoxes, fbaSkuQueue]);
+  }, [fbaRawBoxes, fbaSkuQueue, assignQueueToBoxes]);
 
   const fetchLocations = async () => {
     try {
@@ -407,13 +446,44 @@ const STOPage = () => {
     const sku = String(queueSku || "")
       .trim()
       .toUpperCase();
+    if (!fromLoc) {
+      setQueueError("Select a From Location before adding SKUs to the queue.");
+      return;
+    }
     if (!sku) {
       setQueueError("Select a SKU to add to the queue.");
       return;
     }
+    if (fbaSkuQueue.some((item) => getQueueSku(item) === sku)) {
+      setQueueError(`${sku} is already in the queue.`);
+      return;
+    }
+    const availableQty = getAvailableQty(sku);
+    if (availableQty <= 0) {
+      setQueueError(`No available inventory for ${sku} at ${fromLoc}.`);
+      return;
+    }
     setQueueError("");
-    setFbaSkuQueue((prev) => [...prev, sku]);
+    setFbaSkuQueue((prev) => [...prev, { sku, quantity: availableQty }]);
     setQueueSku("");
+  };
+
+  const handleQueueQtyChange = (index, newQty) => {
+    setFbaSkuQueue((prev) =>
+      prev.map((item, i) => {
+        const sku = getQueueSku(item);
+        if (i !== index) {
+          return typeof item === "string"
+            ? { sku, quantity: getAvailableQty(sku) }
+            : item;
+        }
+
+        return {
+          sku,
+          quantity: clampQueueQuantity(newQty, getAvailableQty(sku)),
+        };
+      }),
+    );
   };
 
   const handleRemoveQueueItem = (index) => {
@@ -1028,10 +1098,15 @@ const STOPage = () => {
                       <div className="text-xs font-medium text-gray-600 mb-2">
                         Queue Order (boxes will use SKUs in this order):
                       </div>
-                      {fbaSkuQueue.map((sku, idx) => (
+                      {fbaSkuQueue.map((item, idx) => {
+                        const sku = getQueueSku(item);
+                        const availableQty = getAvailableQty(sku);
+                        const queueQty = getQueueQuantity(item);
+
+                        return (
                         <div
                           key={`${sku}-${idx}`}
-                          className="flex items-center justify-between bg-white border rounded px-3 py-2 text-xs"
+                          className="flex items-center justify-between gap-3 bg-white border rounded px-3 py-2 text-xs"
                         >
                           <div className="flex items-center gap-3">
                             <div className="bg-indigo-100 text-indigo-700 rounded-full w-6 h-6 flex items-center justify-center font-bold text-xs">
@@ -1042,9 +1117,28 @@ const STOPage = () => {
                                 {sku}
                               </div>
                               <div className="text-gray-500">
-                                Available: {getAvailableQty(sku)}
+                                Available: {availableQty}
                               </div>
                             </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label
+                              className="text-gray-500"
+                              htmlFor={`queue-qty-${idx}`}
+                            >
+                              Qty
+                            </label>
+                            <input
+                              id={`queue-qty-${idx}`}
+                              type="number"
+                              min="0"
+                              max={availableQty}
+                              value={queueQty}
+                              onChange={(e) =>
+                                handleQueueQtyChange(idx, e.target.value)
+                              }
+                              className="w-20 border rounded px-2 py-1 text-right text-xs"
+                            />
                           </div>
                           <button
                             type="button"
@@ -1054,11 +1148,13 @@ const STOPage = () => {
                             ✕
                           </button>
                         </div>
-                      ))}
+                        );
+                      })}
                       {totalBoxQty > 0 && (
                         <div className="text-xs text-gray-600 pt-2 border-t">
-                          PDF total: <strong>{totalBoxQty}</strong> units from{" "}
-                          <strong>{fbaRawBoxes.length}</strong> boxes
+                          Queue total: <strong>{totalQueueQty}</strong> units
+                          | PDF total: <strong>{totalBoxQty}</strong> units
+                          from <strong>{fbaRawBoxes.length}</strong> boxes
                         </div>
                       )}
                     </div>
