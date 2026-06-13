@@ -1,0 +1,35 @@
+
+> whs-reac@1.0.0 dev
+> concurrently "npm run server" "npm run client"
+
+[0] 
+[0] > whs-reac@1.0.0 server
+[0] > cd server && npm run dev
+[0] 
+[1] 
+[1] > whs-reac@1.0.0 client
+[1] > cd client && npm run dev
+[1] 
+[0] 
+[0] > server@1.0.0 dev
+[0] > nodemon index.js
+[0] 
+[1] 
+[1] > client@0.0.0 dev
+[1] > vite
+[1] 
+[0] [33m[nodemon] 3.1.10[39m
+[0] [33m[nodemon] to restart at any time, enter `rs`[39m
+[0] [33m[nodemon] watching path(s): *.*[39m
+[0] [33m[nodemon] watching extensions: js,mjs,cjs,json[39m
+[0] [32m[nodemon] starting `node index.js`[39m
+[1] 
+[1]   [32m[1mVITE[22m v7.3.1[39m  [2mready in [0m[1m344[22m[2m[0m ms[22m
+[1] 
+[1]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[1] [2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[0] [dotenv@17.3.1] injecting env (4) from .env -- tip: ⚙️  override existing env vars with { override: true }
+[0] [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+[0] [dotenv@17.3.1] injecting env (0) from .env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[0] Server is running on port 5000
+[0] Connected to MongoDB

@@ -101,7 +101,7 @@ def main():
     # Defaults can still be changed here, or overridden from the command line:
     # python label_search.py "E:\WHS" "<Chinese text>"
     folder_to_search = r"E:\WHS"
-    string_to_find = "X0051WCESJ"
+    string_to_find = "X005100ZK5"
 
     if len(sys.argv) > 1:
         folder_to_search = sys.argv[1]
@@ -113,3 +113,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+

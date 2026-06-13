@@ -262,6 +262,8 @@ const InvoicePage = () => {
   const [bulkPaymentStatus, setBulkPaymentStatus] = useState("");
   const [skuSearch, setSkuSearch] = useState("");
   const [selectedSkus, setSelectedSkus] = useState([]);
+  const [payWeekFilter, setPayWeekFilter] = useState("");
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState("");
   const [draftPayWeeks, setDraftPayWeeks] = useState({});
   const [message, setMessage] = useState({ type: "", text: "" });
 
@@ -308,6 +310,22 @@ const InvoicePage = () => {
     [transactions],
   );
 
+  const payWeekOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          transactions
+            .map((transaction) => transaction.invoice_pay_week)
+            .filter(
+              (payWeek) =>
+                payWeek !== "" && payWeek !== null && payWeek !== undefined,
+            )
+            .map((payWeek) => String(payWeek)),
+        ),
+      ].sort((a, b) => Number(a) - Number(b)),
+    [transactions],
+  );
+
   const filteredTransactions = useMemo(() => {
     const selectedSkuSet = new Set(
       selectedSkus.map((sku) => String(sku).toUpperCase()),
@@ -316,10 +334,31 @@ const InvoicePage = () => {
     return [...transactions]
       .sort((a, b) => getTimestampValue(a.timestamp) - getTimestampValue(b.timestamp))
       .filter((transaction) => {
-        if (selectedSkuSet.size === 0) return true;
-        return selectedSkuSet.has(String(transaction.sku || "").toUpperCase());
+        if (
+          selectedSkuSet.size > 0 &&
+          !selectedSkuSet.has(String(transaction.sku || "").toUpperCase())
+        ) {
+          return false;
+        }
+
+        if (payWeekFilter) {
+          const payWeek = String(transaction.invoice_pay_week ?? "");
+          if (payWeekFilter === "__blank__") {
+            if (payWeek !== "") return false;
+          } else if (payWeek !== payWeekFilter) {
+            return false;
+          }
+        }
+
+        if (paymentStatusFilter) {
+          const paymentStatus =
+            transaction.invoice_payment_status === "paid" ? "paid" : "unpaid";
+          if (paymentStatus !== paymentStatusFilter) return false;
+        }
+
+        return true;
       });
-  }, [transactions, selectedSkus]);
+  }, [transactions, selectedSkus, payWeekFilter, paymentStatusFilter]);
 
   const totalPages = Math.max(
     1,
@@ -349,7 +388,7 @@ const InvoicePage = () => {
     setCurrentPage(1);
     setSelectedIds(new Set());
     setLastSelectedIndex(null);
-  }, [selectedSkus]);
+  }, [selectedSkus, payWeekFilter, paymentStatusFilter]);
 
   if (!isAdmin) {
     return <Navigate to="/" replace />;
@@ -633,33 +672,86 @@ const InvoicePage = () => {
         <p className="text-xs font-semibold text-gray-500 uppercase mb-4">
           Filters
         </p>
-        <div className="max-w-md">
-          <label className="block text-xs font-medium text-gray-700 mb-1">
-            SKU
-          </label>
-          <input
-            type="text"
-            placeholder="Search SKU..."
-            value={skuSearch}
-            onChange={(e) => setSkuSearch(e.target.value)}
-            className="w-full border rounded px-2 py-1 text-sm mb-2"
-          />
-          <div className="max-h-40 overflow-y-auto border rounded p-2 text-xs">
-            {skuOptions
-              .filter((sku) =>
-                String(sku).toUpperCase().includes(skuSearch.toUpperCase()),
-              )
-              .map((sku) => (
-                <label key={sku} className="flex items-center space-x-2 mb-1">
-                  <input
-                    type="checkbox"
-                    checked={selectedSkus.includes(sku)}
-                    onChange={(e) => handleToggleSku(sku, e.target.checked)}
-                    className="rounded text-indigo-600 h-3 w-3"
-                  />
-                  <span>{sku}</span>
-                </label>
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(260px,420px)_160px_180px_auto] gap-4 items-start">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              SKU
+            </label>
+            <input
+              type="text"
+              placeholder="Search SKU..."
+              value={skuSearch}
+              onChange={(e) => setSkuSearch(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-sm mb-2"
+            />
+            <div className="max-h-40 overflow-y-auto border rounded p-2 text-xs">
+              {skuOptions
+                .filter((sku) =>
+                  String(sku).toUpperCase().includes(skuSearch.toUpperCase()),
+                )
+                .map((sku) => (
+                  <label key={sku} className="flex items-center space-x-2 mb-1">
+                    <input
+                      type="checkbox"
+                      checked={selectedSkus.includes(sku)}
+                      onChange={(e) => handleToggleSku(sku, e.target.checked)}
+                      className="rounded text-indigo-600 h-3 w-3"
+                    />
+                    <span>{sku}</span>
+                  </label>
+                ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Pay Week
+            </label>
+            <select
+              value={payWeekFilter}
+              onChange={(e) => setPayWeekFilter(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-sm bg-white"
+            >
+              <option value="">All weeks</option>
+              {payWeekOptions.map((payWeek) => (
+                <option key={payWeek} value={payWeek}>
+                  Week {payWeek}
+                </option>
               ))}
+              <option value="__blank__">No week assigned</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Payment Status
+            </label>
+            <select
+              value={paymentStatusFilter}
+              onChange={(e) => setPaymentStatusFilter(e.target.value)}
+              className="w-full border rounded px-2 py-1 text-sm bg-white"
+            >
+              <option value="">All statuses</option>
+              <option value="unpaid">Unpaid</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <div className="flex items-end h-full">
+            <button
+              onClick={() => {
+                setSelectedSkus([]);
+                setSkuSearch("");
+                setPayWeekFilter("");
+                setPaymentStatusFilter("");
+              }}
+              disabled={
+                selectedSkus.length === 0 &&
+                skuSearch === "" &&
+                payWeekFilter === "" &&
+                paymentStatusFilter === ""
+              }
+              className="bg-white text-gray-700 border border-gray-300 px-4 py-1.5 rounded text-sm font-medium hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Clear Filters
+            </button>
           </div>
         </div>
       </div>
